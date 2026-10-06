@@ -2,7 +2,7 @@
 {% block title %}EZChords Benchmark{% endblock %}
 {% block body %}
 
-<div class="card">
+<div class="card" id="analyser">
 <h1>Analyser une chanson</h1>
 <form action="{{ path('bench_start') }}" method="post" enctype="multipart/form-data" id="analyze-form">
 <div class="row">
@@ -26,11 +26,11 @@
 </form>
 </div>
 
-<div class="card">
+<div class="card" id="chansons">
 <h2>Chansons analysées</h2>
 <table>
 <thead>
-<tr><th>#</th><th>Chanson</th><th>Signature</th><th>Tempo</th><th>Revue</th></tr>
+<tr><th>#</th><th>Chanson</th><th>Signature</th><th>Tempo</th><th>Revue</th><th aria-label="Actions"></th></tr>
 </thead>
 <tbody>
 {% for r in runs %}
@@ -41,16 +41,22 @@
 <td>{{ r.detected_signature ?: r.requested_signature }}</td>
 <td>{{ r.tempo ? r.tempo|number_format(3) ~ ' BPM' : '—' }}</td>
 <td>{{ r.reviewed_at ? 'oui' : 'non' }}</td>
+<td style="width:1%;white-space:nowrap">
+<form action="{{ path('bench_delete',{id:r.id}) }}" method="post"
+      onsubmit="return confirm('Supprimer complètement cette chanson, son audio et toutes ses données de benchmark ?');">
+<button type="submit" class="trash-button" title="Supprimer complètement" aria-label="Supprimer complètement">🗑️</button>
+</form>
+</td>
 </tr>
 {% endif %}
 {% else %}
-<tr><td colspan="5">Aucune chanson analysée.</td></tr>
+<tr><td colspan="6">Aucune chanson analysée.</td></tr>
 {% endfor %}
 </tbody>
 </table>
 </div>
 
-<div class="card">
+<div class="card" id="scores">
 <h2>Score global</h2>
 <table>
 <thead><tr><th>Algorithme</th><th>Bon</th><th>Pas bon</th><th>Non revu</th><th>Score</th></tr></thead>

@@ -239,9 +239,9 @@ SQL;
         return $row ?: null;
     }
 
-    public function saveAlgorithmReviews(
+    public function saveAlgorithmApprovals(
         int $runId,
-        array $statuses,
+        array $approvedAlgorithms,
         string $reference,
         string $comment
     ): void {
@@ -249,6 +249,7 @@ SQL;
 
         try {
             $algorithms = $this->algorithms($runId);
+            $approved = array_fill_keys(array_map('strval', $approvedAlgorithms), true);
             $now = gmdate('c');
 
             $upsertReview = $this->pdo()->prepare(
@@ -262,11 +263,7 @@ SQL;
 
             foreach ($algorithms as $algorithm) {
                 $name = (string)$algorithm['algorithm'];
-                $status = $statuses[$name] ?? null;
-
-                if (!in_array($status, ['approved', 'rejected'], true)) {
-                    continue;
-                }
+                $status = isset($approved[$name]) ? 'approved' : 'rejected';
 
                 $upsertReview->execute([
                     $runId,
@@ -298,6 +295,50 @@ SQL;
             $this->pdo()->rollBack();
             throw $e;
         }
+    }
+
+    public function deleteSongByRunId(int $runId): ?array
+    {
+        $run = $this->run($runId);
+
+        if ($run === null) {
+            return null;
+        }
+
+        $songId = (int)$run['song_id'];
+
+        $stmt = $this->pdo()->prepare(
+            'SELECT id, input_path FROM benchmark_runs WHERE song_id=? ORDER BY id'
+        );
+        $stmt->execute([$songId]);
+        $runs = $stmt->fetchAll();
+
+        $runIds = array_map(
+            static fn(array $row): int => (int)$row['id'],
+            $runs
+        );
+
+        $audioPaths = array_values(array_unique(array_filter(array_map(
+            static fn(array $row): string => (string)$row['input_path'],
+            $runs
+        ))));
+
+        $this->pdo()->beginTransaction();
+
+        try {
+            $delete = $this->pdo()->prepare('DELETE FROM songs WHERE id=?');
+            $delete->execute([$songId]);
+            $this->pdo()->commit();
+        } catch (\Throwable $e) {
+            $this->pdo()->rollBack();
+            throw $e;
+        }
+
+        return [
+            'song_id' => $songId,
+            'run_ids' => $runIds,
+            'audio_paths' => $audioPaths,
+        ];
     }
 
     public function globalScores(): array

@@ -8,6 +8,16 @@
 body{font-family:Arial,sans-serif;margin:0;background:#f3f3f3;color:#111}
 header{background:#222;color:#fff;padding:12px 20px}
 header a{color:#fff;text-decoration:none}
+.header-inner{max-width:1700px;margin:0 auto;display:flex;align-items:center;justify-content:space-between;gap:18px}
+.main-nav{display:flex;gap:14px;align-items:center;flex-wrap:wrap}
+.main-nav a{padding:5px 7px;border-radius:3px}
+.main-nav a:hover,.main-nav a:focus{background:#444}
+.review-check{display:flex!important;flex-direction:row!important;align-items:center;gap:6px!important;white-space:nowrap}
+.trash-button{border:0;background:transparent;font-size:20px;line-height:1;padding:4px 7px;cursor:pointer}
+.trash-button:hover,.trash-button:focus{background:#eee}
+.display-controls{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.display-controls label{display:flex;flex-direction:row;gap:6px;align-items:center}
+
 .wrap{max-width:1700px;margin:18px auto;padding:0 16px}
 .card{background:#fff;border:1px solid #bbb;padding:14px;margin-bottom:16px}
 .row{display:flex;gap:12px;flex-wrap:wrap;align-items:end}
@@ -54,7 +64,16 @@ a.song{font-weight:bold;color:#111}
 </style>
 </head>
 <body>
-<header><a href="{{ path('bench_index') }}"><b>EZChords Benchmark</b></a></header>
+<header>
+<div class="header-inner">
+<a href="{{ path('bench_index') }}"><b>EZChords Benchmark</b></a>
+<nav class="main-nav" aria-label="Navigation principale">
+<a href="{{ path('bench_index') }}#analyser">Analyser</a>
+<a href="{{ path('bench_index') }}#chansons">Chansons</a>
+<a href="{{ path('bench_index') }}#scores">Scores</a>
+</nav>
+</div>
+</header>
 <div class="wrap">{% block body %}{% endblock %}</div>
 </body>
 </html>

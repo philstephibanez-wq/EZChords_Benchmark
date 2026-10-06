@@ -11,40 +11,39 @@ Signature : {{ run.detected_signature ?: run.requested_signature }}
 </div>
 
 <div class="card">
-<h2>Lecture synchronisée <span style="font-size:12px;color:#777;font-weight:normal">Player V4g</span></h2>
+<h2>Lecture synchronisée <span style="font-size:12px;color:#777;font-weight:normal">Player V5</span></h2>
 <div class="player-panel">
 <label style="display:flex;flex-direction:row;align-items:center;gap:6px">
 <input type="checkbox" id="mp3-enabled" {% if audio_available %}checked{% else %}disabled{% endif %}>
-MP3 original{% if not audio_available %} — absent pour cette ancienne analyse{% endif %}
-</label>
-
-<label style="display:flex;flex-direction:row;align-items:center;gap:6px">
-Niveau
-<select id="difficulty-level">
-<option value="beginner">Débutant</option>
-<option value="intermediate" selected>Intermédiaire</option>
-<option value="advanced">Confirmé</option>
-</select>
+MP3 original{% if not audio_available %} — absent{% endif %}
 </label>
 
 <button type="button" id="master-play">▶ Lire</button>
 <button type="button" id="master-stop">■ Stop</button>
+<button type="button" id="audio-test">Test piano</button>
 
 {% if audio_available %}
-<audio id="master-audio" preload="metadata" controls controlsList="nodownload" src="{{ path('bench_audio',{id:run.id}) }}"></audio>
+<audio id="master-audio" preload="metadata" controls controlsList="nodownload" src="{{ audio_url }}"></audio>
 {% else %}
 <audio id="master-audio" preload="metadata" controls></audio>
 {% endif %}
 
 <div class="player-state" id="player-state">
-{% if audio_available %}
-Choisir un algorithme ci-dessous.
-{% else %}
-Lecture accords seule disponible. Le MP3 n'a pas été conservé pour cette ancienne analyse.
-{% endif %}
+{% if audio_available %}MP3 prêt à charger.{% else %}Lecture accords seule disponible.{% endif %}
 </div>
 <div class="player-state" id="synth-state">Synthé : non initialisé</div>
-<div class="player-state">Le lecteur MP3 natif peut être utilisé directement ; le piano suit la timeline de l'algo sélectionné.</div>
+</div>
+</div>
+
+<div class="card">
+<div class="display-controls">
+<strong>Complexité des accords affichés</strong>
+<select id="chord-display-level" aria-label="Complexité des accords">
+<option value="beginner">Débutant</option>
+<option value="intermediate" selected>Intermédiaire</option>
+<option value="advanced">Confirmé</option>
+</select>
+<span class="meta">La timeline et le piano virtuel utilisent immédiatement ce niveau. L'analyse brute reste inchangée.</span>
 </div>
 </div>
 
@@ -72,7 +71,7 @@ Lecture accords seule disponible. Le MP3 n'a pas été conservé pour cette anci
 <div class="beats">
 {% for chord in m.text|trim|split(' ') %}
 {% if chord != '' %}
-<div class="beat" data-token="{{ chord|e('html_attr') }}">{{ chord }}</div>
+<div class="beat" data-token="{{ chord|e('html_attr') }}"><span class="chord-label">{{ chord }}</span></div>
 {% endif %}
 {% endfor %}
 </div>
@@ -81,16 +80,14 @@ Lecture accords seule disponible. Le MP3 n'a pas été conservé pour cette anci
 </div>
 
 <div class="choice">
-<label>
-<input type="radio" name="status[{{ a.algorithm }}]" value="approved"
-{% if a.review_status == 'approved' %}checked{% endif %} required>
+<label class="review-check">
+<input type="checkbox" name="approved[]" value="{{ a.algorithm }}"
+{% if a.review_status == 'approved' %}checked{% endif %}>
 Bon
 </label>
-<label>
-<input type="radio" name="status[{{ a.algorithm }}]" value="rejected"
-{% if a.review_status == 'rejected' %}checked{% endif %} required>
-Pas bon
-</label>
+<span class="meta">
+{% if a.review_status == 'approved' %}approuvé{% elseif a.review_status == 'rejected' %}pas bon{% else %}non revu{% endif %}
+</span>
 </div>
 </div>
 {% endfor %}
@@ -111,6 +108,6 @@ Pas bon
 <script>
 window.EZCHORDS_AUDIO_AVAILABLE = {{ audio_available ? 'true' : 'false' }};
 </script>
-<script src="/js/benchmark-player.js"></script>
+<script src="/js/benchmark-player.js?v=5"></script>
 
 {% endblock %}
