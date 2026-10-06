@@ -129,6 +129,7 @@ final class BenchmarkController extends AbstractController
             'meter_diagnostic' => is_array($result) ? ($result['meter'] ?? null) : null,
             'convergence' => is_array($result) ? ($result['convergence'] ?? null) : null,
             'phase_diagnostics' => $phaseDiagnostics,
+            'silence_diagnostic' => is_array($result) ? ($result['silence'] ?? null) : null,
         ]);
     }
 

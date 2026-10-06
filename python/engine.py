@@ -7,7 +7,7 @@ import torch
 
 FPS=50.0
 AUTO={"2/4":2,"3/4":3,"4/4":4,"6/8":6}
-ENGINE_VERSION="r6-app-v6-algo-core"
+ENGINE_VERSION="r6-app-v6b-silence"
 
 def z(x):
     x=np.asarray(x,float); return (x-x.mean())/(x.std()+1e-9) if x.size else x
@@ -127,11 +127,92 @@ def chord_for_interval(segs,a,b):
     # A zero-overlap segment must never fill a silent beat.
     return best['chord'] if best is not None and ov>0.0 else '.'
 
-def grid(segs,beats,phase,period,count=32):
+def harmonic_silence_mask(y,sr,beats,hop=512):
+    """
+    Detect beat-level harmonic rests ("no chord"), not digital silence.
+    The metric grid is untouched. A beat is silent only when BOTH:
+      - harmonic RMS is in the quiet tail of the song;
+      - chroma energy is also in the quiet tail.
+    This avoids treating voice/percussion-only activity as a sustained chord.
+    """
+    beats=np.asarray(beats,float)
+    if not len(beats):
+        return np.zeros(0,dtype=bool), {
+            "silent_beats":0,
+            "total_beats":0,
+            "silent_ratio":0.0,
+            "rms_threshold_db":None,
+            "chroma_threshold":None,
+        }
+
+    harm,_=librosa.effects.hpss(y)
+    step=float(np.median(np.diff(beats))) if len(beats)>1 else .5
+
+    rms=[]
+    chroma_energy=[]
+
+    chroma=np.abs(librosa.feature.chroma_cqt(y=harm,sr=sr,hop_length=hop))
+    chroma_times=librosa.frames_to_time(np.arange(chroma.shape[1]),sr=sr,hop_length=hop)
+
+    for i,a in enumerate(beats):
+        b=beats[i+1] if i+1<len(beats) else a+step
+        ia=max(0,int(round(a*sr)))
+        ib=min(len(harm),max(ia+1,int(round(b*sr))))
+        chunk=np.asarray(harm[ia:ib],float)
+        r=float(np.sqrt(np.mean(chunk*chunk)+1e-12)) if len(chunk) else 0.0
+        rms.append(r)
+
+        mask=(chroma_times>=a)&(chroma_times<b)
+        if np.any(mask):
+            ce=float(np.mean(np.sum(chroma[:,mask],axis=0)))
+        else:
+            idx=int(np.argmin(np.abs(chroma_times-a))) if len(chroma_times) else 0
+            ce=float(np.sum(chroma[:,idx])) if chroma.shape[1] else 0.0
+        chroma_energy.append(ce)
+
+    rms=np.asarray(rms,float)
+    chroma_energy=np.asarray(chroma_energy,float)
+    rms_db=20.0*np.log10(np.maximum(rms,1e-9))
+
+    # Robust adaptive thresholds. We deliberately require both conditions.
+    # Quiet-tail anchor prevents "everything is a chord" on arrangements
+    # where lv-chordia labels through a harmonic rest.
+    rms_p15=float(np.percentile(rms_db,15))
+    rms_median=float(np.median(rms_db))
+    rms_threshold=float(min(rms_p15+3.0, rms_median-12.0))
+
+    chroma_p15=float(np.percentile(chroma_energy,15))
+    chroma_median=float(np.median(chroma_energy))
+    chroma_threshold=float(min(chroma_p15*1.15, chroma_median*0.40))
+
+    mask=(rms_db<=rms_threshold)&(chroma_energy<=chroma_threshold)
+
+    # Single isolated silent beats are allowed musically, but suppress tiny
+    # numerical holes: require a meaningful energy drop relative to median.
+    strong_drop=rms_db <= (rms_median-9.0)
+    mask=mask & strong_drop
+
+    diag={
+        "silent_beats":int(mask.sum()),
+        "total_beats":int(len(mask)),
+        "silent_ratio":float(mask.mean()) if len(mask) else 0.0,
+        "rms_threshold_db":rms_threshold,
+        "rms_median_db":rms_median,
+        "chroma_threshold":chroma_threshold,
+        "chroma_median":chroma_median,
+        "silent_indices":[int(i) for i in np.flatnonzero(mask)],
+    }
+    return mask,diag
+
+def grid(segs,beats,phase,period,count=32,silent_beats=None):
     beats=np.asarray(beats,float); step=float(np.median(np.diff(beats))) if len(beats)>1 else .5; cells={}
     for i,a in enumerate(beats):
         b=beats[i+1] if i+1<len(beats) else a+step; rel=i-phase; m=rel//period; bt=rel%period
-        if 0<=m<count: cells[(m,bt)]=chord_for_interval(segs,float(a),float(b))
+        if 0<=m<count:
+            if silent_beats is not None and i < len(silent_beats) and bool(silent_beats[i]):
+                cells[(m,bt)]='.'
+            else:
+                cells[(m,bt)]=chord_for_interval(segs,float(a),float(b))
     out=[]
     for m in range(count):
         raw=[cells.get((m,b),'.') for b in range(period)]; r=[]; prev=None
@@ -169,6 +250,8 @@ def analyze(audio:Path,signature_request:str,deps:Path,work:Path,progress,log):
     tempo_arr,beats=librosa.beat.beat_track(y=perc,sr=sr,hop_length=hop,units='time',trim=False); tempo=float(np.asarray(tempo_arr).squeeze()); beats=np.asarray(beats,float)
     bf=librosa.time_to_frames(beats,sr=sr,hop_length=hop); onset=sample_frames(librosa.onset.onset_strength(y=perc,sr=sr,hop_length=hop),bf)
     bass=bass_feature(y,sr,hop,bf); harm=harmonic_novelty(y,sr,hop,bf)
+    silent_beats,silence_diag=harmonic_silence_mask(y,sr,beats,hop)
+    log('INFO',f'no-chord {silence_diag["silent_beats"]}/{silence_diag["total_beats"]} beats')
     progress(30)
     if signature_request=='Auto':
         meter=auto_signature(z(onset),z(bass),z(harm))
@@ -224,7 +307,7 @@ def analyze(audio:Path,signature_request:str,deps:Path,work:Path,progress,log):
         if b>a: segs.append({"start":a,"end":b,"chord":chord_label(x.get('chord')),"raw_chord":str(x.get('chord','N'))})
     if not segs: raise RuntimeError('lv-chordia n’a retourné aucun segment')
     progress(82)
-    for a in alg: a['grid']=grid(segs,beats,int(a['phase']),period,32)
+    for a in alg: a['grid']=grid(segs,beats,int(a['phase']),period,32,silent_beats=silent_beats)
     progress(95)
     versions = {
         "python": sys.version.split()[0],
@@ -257,6 +340,7 @@ def analyze(audio:Path,signature_request:str,deps:Path,work:Path,progress,log):
         },
         "algorithms": alg,
         "convergence": convergence,
+        "silence": silence_diag,
         "segments": segs,
     }
 
@@ -267,7 +351,10 @@ def self_test():
     assert len(cp['phase_scores'])==4
     sig,diag=refine_duple_signature_with_beat_this('2/4',x,threshold=.01)
     assert sig=='4/4'
-    beats=np.arange(0,8,.5); segs=[{"start":0,"end":8,"chord":"Cm"}]; assert grid(segs,beats,0,4,1)[0]['text']=='Cm - - -'
+    beats=np.arange(0,8,.5); segs=[{"start":0,"end":8,"chord":"Cm"}]
+    assert grid(segs,beats,0,4,1)[0]['text']=='Cm - - -'
+    sm=np.zeros(len(beats),dtype=bool); sm[1]=True
+    assert grid(segs,beats,0,4,1,silent_beats=sm)[0]['text']=='Cm . Cm -'
     assert chord_for_interval([{"start":1.0,"end":2.0,"chord":"C"}],0.0,0.5)=='.'
     print('ENGINE_SELF_TEST_OK')
 

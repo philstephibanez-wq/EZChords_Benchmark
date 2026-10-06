@@ -24,10 +24,16 @@ Convergence : {{ convergence.distinct_phases }} phase(s) distincte(s)
 {% if convergence.unanimous %}· <b>unanimité des 6 méthodes</b>{% endif %}
 </div>
 {% endif %}
+{% if silence_diagnostic %}
+<div class="meta" style="margin-top:4px">
+No-chord : <b>{{ silence_diagnostic.silent_beats }}</b>/{{ silence_diagnostic.total_beats }} beats
+· RMS seuil {{ silence_diagnostic.rms_threshold_db|number_format(1) }} dB
+</div>
+{% endif %}
 </div>
 
 <div class="card">
-<h2>Lecture synchronisée <span style="font-size:12px;color:#777;font-weight:normal">Player V6</span></h2>
+<h2>Lecture synchronisée <span style="font-size:12px;color:#777;font-weight:normal">Player V6b</span></h2>
 <div class="player-panel">
 <label style="display:flex;flex-direction:row;align-items:center;gap:6px">
 <input type="checkbox" id="mp3-enabled" {% if audio_available %}checked{% else %}disabled{% endif %}>
