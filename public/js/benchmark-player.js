@@ -12,6 +12,10 @@
   const state = document.getElementById("player-state");
   const synthState = document.getElementById("synth-state");
   const displayLevel = document.getElementById("chord-display-level");
+  const mp3Volume = document.getElementById("mp3-volume");
+  const midiVolume = document.getElementById("midi-volume");
+  const mp3VolumeValue = document.getElementById("mp3-volume-value");
+  const midiVolumeValue = document.getElementById("midi-volume-value");
   const algoRadios = Array.from(document.querySelectorAll('input[name="listen_algo"]'));
   const rows = Array.from(document.querySelectorAll("[data-algo-row]"));
 
@@ -33,6 +37,15 @@
     G: 7, "G#": 8, Ab: 8, A: 9, "A#": 10, Bb: 10, B: 11, Cb: 11
   };
   const INDEX_NAME = ["C","C#","D","D#","E","F","F#","G","G#","A","A#","B"];
+
+  function midiGain() {
+    return midiVolume ? Math.max(0, Math.min(1, Number(midiVolume.value) / 100)) : 0.8;
+  }
+
+  function syncVolumeLabels() {
+    if (mp3VolumeValue && mp3Volume) mp3VolumeValue.textContent = mp3Volume.value + "%";
+    if (midiVolumeValue && midiVolume) midiVolumeValue.textContent = midiVolume.value + "%";
+  }
 
   function setState(text) {
     if (state) state.textContent = text;
@@ -284,7 +297,7 @@
     document.querySelectorAll(".measure.current-measure").forEach(el => el.classList.remove("current-measure"));
   }
 
-  function highlightBeat(beat) {
+  function highlightBeat(beat, autoScroll = true) {
     clearHighlight();
     if (!beat) return;
 
@@ -299,7 +312,7 @@
     const visibleLeft = timeline.scrollLeft;
     const visibleRight = visibleLeft + timeline.clientWidth;
 
-    if (left < visibleLeft + 80 || right > visibleRight - 80) {
+    if (autoScroll && (left < visibleLeft + 80 || right > visibleRight - 80)) {
       timeline.scrollTo({
         left: Math.max(0, left - Math.round(timeline.clientWidth * 0.30)),
         behavior: "smooth"
@@ -333,7 +346,7 @@
       osc.frequency.value = frequency;
 
       gain.gain.setValueAtTime(0.0001, now);
-      gain.gain.exponentialRampToValueAtTime(0.22, now + 0.01);
+      gain.gain.exponentialRampToValueAtTime(Math.max(0.0001, 0.22 * midiGain()), now + 0.01);
       gain.gain.exponentialRampToValueAtTime(0.0001, stopAt);
 
       osc.connect(gain);
@@ -405,7 +418,7 @@
       activeNodes = notes.map(note => instrument.play(
         note,
         audioContext.currentTime,
-        { duration: d, gain: 1.0 }
+        { duration: d, gain: midiGain() }
       )).filter(Boolean);
     } else {
       playFallback(notes, duration);
@@ -420,9 +433,9 @@
     const currentTime = nowTime();
     const beat = currentBeat(beats, currentTime);
 
-    if (beat) {
-      highlightBeat(beat);
-      if (isPlaying() && beat.key !== lastBeatKey) {
+    if (beat && isPlaying()) {
+      highlightBeat(beat, true);
+      if (beat.key !== lastBeatKey) {
         lastBeatKey = beat.key;
         strikeChord(beat.chord, beat.end - beat.start).catch(err => setSynthState(err.message || String(err)));
         setState(`${row.dataset.algoName} · ${beat.chord || "silence"} · ${currentTime.toFixed(2)} s`);
@@ -492,6 +505,19 @@
     lastBeatKey = null;
     allNotesOff();
     clearHighlight();
+
+    document.querySelectorAll(".timeline").forEach(timeline => {
+      timeline.scrollLeft = 0;
+    });
+
+    document.querySelectorAll(".measure.current-measure").forEach(el => {
+      el.classList.remove("current-measure");
+    });
+    document.querySelectorAll(".beat.current").forEach(el => {
+      el.classList.remove("current");
+    });
+
+    setState("Arrêt · timelines remises à zéro.");
   });
 
   testButton.addEventListener("click", async () => {
@@ -517,6 +543,15 @@
     audio.addEventListener("seeked", () => {
       lastBeatKey = null;
       allNotesOff();
+
+      const row = selectedRow();
+      if (row) {
+        const beat = currentBeat(timelineBeats(row), audio.currentTime);
+        if (beat) {
+          highlightBeat(beat, false);
+          setState(`${row.dataset.algoName} · ${beat.chord || "silence"} · ${audio.currentTime.toFixed(2)} s`);
+        }
+      }
     });
     audio.addEventListener("ended", () => {
       lastBeatKey = null;
@@ -549,7 +584,23 @@
   });
 
   displayLevel.addEventListener("change", () => {
-    refreshChordLabels();
+    if (mp3Volume) {
+    mp3Volume.addEventListener("input", () => {
+      audio.volume = Number(mp3Volume.value) / 100;
+      syncVolumeLabels();
+    });
+  }
+
+  if (midiVolume) {
+    midiVolume.addEventListener("input", syncVolumeLabels);
+  }
+
+  if (audioAvailable && mp3Volume) {
+    audio.volume = Number(mp3Volume.value) / 100;
+  }
+  syncVolumeLabels();
+
+  refreshChordLabels();
     lastBeatKey = null;
     allNotesOff();
     if (isPlaying()) {

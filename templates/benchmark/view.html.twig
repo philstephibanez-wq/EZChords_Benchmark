@@ -8,10 +8,26 @@
 Signature : {{ run.detected_signature ?: run.requested_signature }}
 · Tempo : {{ run.tempo ? run.tempo|number_format(3) ~ ' BPM' : '—' }}
 </div>
+{% if meter_diagnostic %}
+<div class="meta" style="margin-top:6px">
+Auto métrique :
+initiale {{ meter_diagnostic.initial_signature ?? meter_diagnostic.signature }}
+→ utilisée {{ meter_diagnostic.signature }}
+{% if meter_diagnostic.duple_refinement is defined and meter_diagnostic.duple_refinement.applied %}
+· Δ(4/4−2/4) BeatThis = {{ meter_diagnostic.duple_refinement.delta_4_minus_2|number_format(5) }}
+{% endif %}
+</div>
+{% endif %}
+{% if convergence %}
+<div class="meta" style="margin-top:4px">
+Convergence : {{ convergence.distinct_phases }} phase(s) distincte(s)
+{% if convergence.unanimous %}· <b>unanimité des 6 méthodes</b>{% endif %}
+</div>
+{% endif %}
 </div>
 
 <div class="card">
-<h2>Lecture synchronisée <span style="font-size:12px;color:#777;font-weight:normal">Player V5</span></h2>
+<h2>Lecture synchronisée <span style="font-size:12px;color:#777;font-weight:normal">Player V6</span></h2>
 <div class="player-panel">
 <label style="display:flex;flex-direction:row;align-items:center;gap:6px">
 <input type="checkbox" id="mp3-enabled" {% if audio_available %}checked{% else %}disabled{% endif %}>
@@ -21,6 +37,18 @@ MP3 original{% if not audio_available %} — absent{% endif %}
 <button type="button" id="master-play">▶ Lire</button>
 <button type="button" id="master-stop">■ Stop</button>
 <button type="button" id="audio-test">Test piano</button>
+
+<label class="volume-control">
+MP3
+<input type="range" id="mp3-volume" min="0" max="100" value="100">
+<span id="mp3-volume-value">100%</span>
+</label>
+
+<label class="volume-control">
+MIDI
+<input type="range" id="midi-volume" min="0" max="100" value="80">
+<span id="midi-volume-value">80%</span>
+</label>
 
 {% if audio_available %}
 <audio id="master-audio" preload="metadata" controls controlsList="nodownload" src="{{ audio_url }}"></audio>
@@ -55,6 +83,14 @@ MP3 original{% if not audio_available %} — absent{% endif %}
 <div>
 <div class="algo-name">{{ a.algorithm }}</div>
 <div class="meta">P{{ a.phase }} · S {{ a.score|number_format(5) }} · M {{ a.margin|number_format(5) }}</div>
+{% set ps = phase_diagnostics[a.algorithm] ?? [] %}
+{% if ps %}
+<div class="meta">
+{% for p in ps %}
+P{{ p.phase }}={{ p.score|number_format(4) }}{% if not loop.last %} · {% endif %}
+{% endfor %}
+</div>
+{% endif %}
 <div class="algo-tools">
 <label class="listen-radio">
 <input type="radio" name="listen_algo" value="{{ loop.index0 }}" {% if loop.first %}checked{% endif %}>

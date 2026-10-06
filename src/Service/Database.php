@@ -389,6 +389,43 @@ SQL;
         return $rows;
     }
 
+    public function reportRows(): array
+    {
+        $sql = <<<'SQL'
+SELECT
+    br.id AS run_id,
+    s.title,
+    s.artist,
+    br.detected_signature,
+    br.requested_signature,
+    br.tempo,
+    ar.algorithm,
+    ar.phase,
+    rv.status AS review_status,
+    rr.reference,
+    rr.comment,
+    rr.reviewed_at
+FROM benchmark_runs br
+JOIN songs s ON s.id = br.song_id
+JOIN algorithm_results ar ON ar.run_id = br.id
+LEFT JOIN algorithm_reviews rv
+  ON rv.run_id = ar.run_id
+ AND rv.algorithm = ar.algorithm
+LEFT JOIN run_reviews rr
+  ON rr.run_id = br.id
+WHERE br.status='done'
+ORDER BY s.title COLLATE NOCASE, s.artist COLLATE NOCASE, ar.algorithm
+SQL;
+
+        $rows = $this->pdo()->query($sql)->fetchAll();
+
+        foreach ($rows as &$row) {
+            $row['review_status'] = $row['review_status'] ?: 'unreviewed';
+        }
+
+        return $rows;
+    }
+
     public function exportData(): array
     {
         $runs = $this->allRuns();

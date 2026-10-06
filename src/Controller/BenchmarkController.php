@@ -107,12 +107,28 @@ final class BenchmarkController extends AbstractController
             ? '/benchmark-audio/'.rawurlencode(basename((string)$run['input_path']))
             : null;
 
+        $result = !empty($run['result_json'])
+            ? json_decode((string)$run['result_json'], true)
+            : null;
+
+        $phaseDiagnostics = [];
+        if (is_array($result) && isset($result['algorithms']) && is_array($result['algorithms'])) {
+            foreach ($result['algorithms'] as $item) {
+                if (isset($item['algorithm'])) {
+                    $phaseDiagnostics[(string)$item['algorithm']] = $item['phase_scores'] ?? [];
+                }
+            }
+        }
+
         return $this->render('benchmark/view.html.twig', [
             'run' => $run,
             'algorithms' => $db->algorithms($id),
             'review' => $db->runReview($id),
             'audio_available' => $audioAvailable,
             'audio_url' => $audioUrl,
+            'meter_diagnostic' => is_array($result) ? ($result['meter'] ?? null) : null,
+            'convergence' => is_array($result) ? ($result['convergence'] ?? null) : null,
+            'phase_diagnostics' => $phaseDiagnostics,
         ]);
     }
 
@@ -142,6 +158,16 @@ final class BenchmarkController extends AbstractController
     }
 
 
+
+
+    #[Route('/report', name: 'bench_report', methods: ['GET'])]
+    public function report(Database $db): Response
+    {
+        return $this->render('benchmark/report.html.twig', [
+            'scores' => $db->globalScores(),
+            'rows' => $db->reportRows(),
+        ]);
+    }
 
 
     #[Route('/run/{id<\d+>}/delete', name: 'bench_delete', methods: ['POST'])]

@@ -7,7 +7,7 @@ import torch
 
 FPS=50.0
 AUTO={"2/4":2,"3/4":3,"4/4":4,"6/8":6}
-ENGINE_VERSION="r6-app-v2"
+ENGINE_VERSION="r6-app-v6-algo-core"
 
 def z(x):
     x=np.asarray(x,float); return (x-x.mean())/(x.std()+1e-9) if x.size else x
@@ -55,13 +55,60 @@ def auto_signature(dr,bass,harm):
     order=sorted(best.items(),key=lambda x:x[1][0],reverse=True); sig,(top,ph)=order[0]; second=order[1][1][0]
     return {"signature":sig,"phase":int(ph),"confidence":float(np.clip(.5+top-second,0,1)),"scores":{k:round(v[0],5) for k,v in best.items()}}
 
-def choose_phase(v,p):
+def phase_scores(v,p):
+    arr=np.asarray(v,float)
     rows=[]
     for ph in range(p):
-        a=np.asarray(v)[ph::p]; b=np.concatenate([np.asarray(v)[q::p] for q in range(p) if q!=ph]); sc=float(a.mean()-b.mean())
-        rows.append((ph,sc,float(a.mean())))
-    rows.sort(key=lambda x:(x[1],x[2]),reverse=True)
-    return {"phase":rows[0][0],"score":rows[0][1],"margin":rows[0][1]-rows[1][1]}
+        a=arr[ph::p]
+        others=[arr[q::p] for q in range(p) if q!=ph]
+        b=np.concatenate(others) if others else np.asarray([],float)
+        sc=float(a.mean()-b.mean()) if len(a) and len(b) else -1e9
+        rows.append({"phase":int(ph),"score":sc,"downbeat_mean":float(a.mean()) if len(a) else -1e9})
+    return rows
+
+def choose_phase(v,p):
+    rows=phase_scores(v,p)
+    ranked=sorted(rows,key=lambda x:(x["score"],x["downbeat_mean"]),reverse=True)
+    best=ranked[0]
+    second=ranked[1] if len(ranked)>1 else {"score":best["score"]}
+    return {
+        "phase":int(best["phase"]),
+        "score":float(best["score"]),
+        "margin":float(best["score"]-second["score"]),
+        "phase_scores":rows,
+    }
+
+def refine_duple_signature_with_beat_this(initial_signature, bt, threshold=0.04):
+    if initial_signature not in ("2/4","4/4"):
+        return initial_signature, {
+            "applied":False,
+            "reason":"not_duple_simple",
+            "initial_signature":initial_signature,
+        }
+
+    p2=choose_phase(bt,2)
+    p4=choose_phase(bt,4)
+    delta=float(p4["score"]-p2["score"])
+
+    refined=initial_signature
+    reason="keep_initial"
+    if delta > threshold:
+        refined="4/4"
+        reason="beat_this_prefers_4_4"
+    elif delta < -threshold:
+        refined="2/4"
+        reason="beat_this_prefers_2_4"
+
+    return refined, {
+        "applied":True,
+        "initial_signature":initial_signature,
+        "refined_signature":refined,
+        "threshold":float(threshold),
+        "delta_4_minus_2":delta,
+        "phase2_best":p2,
+        "phase4_best":p4,
+        "reason":reason,
+    }
 
 def chord_label(raw):
     s=str(raw or 'N').strip()
@@ -71,11 +118,14 @@ def chord_label(raw):
     return root+mp.get(q,q)
 
 def chord_for_interval(segs,a,b):
-    best=None; ov=-1
+    best=None; ov=0.0
     for s in segs:
-        x=max(0,min(b,s['end'])-max(a,s['start']))
-        if x>ov: ov=x; best=s
-    return best['chord'] if best else '.'
+        x=max(0.0,min(b,s['end'])-max(a,s['start']))
+        if x>ov:
+            ov=x
+            best=s
+    # A zero-overlap segment must never fill a silent beat.
+    return best['chord'] if best is not None and ov>0.0 else '.'
 
 def grid(segs,beats,phase,period,count=32):
     beats=np.asarray(beats,float); step=float(np.median(np.diff(beats))) if len(beats)>1 else .5; cells={}
@@ -120,17 +170,54 @@ def analyze(audio:Path,signature_request:str,deps:Path,work:Path,progress,log):
     bf=librosa.time_to_frames(beats,sr=sr,hop_length=hop); onset=sample_frames(librosa.onset.onset_strength(y=perc,sr=sr,hop_length=hop),bf)
     bass=bass_feature(y,sr,hop,bf); harm=harmonic_novelty(y,sr,hop,bf)
     progress(30)
-    if signature_request=='Auto': meter=auto_signature(z(onset),z(bass),z(harm)); signature=meter['signature']
-    else: meter={"signature":signature_request,"confidence":1.0,"scores":{}}; signature=signature_request
+    if signature_request=='Auto':
+        meter=auto_signature(z(onset),z(bass),z(harm))
+        initial_signature=meter['signature']
+    else:
+        meter={"signature":signature_request,"confidence":1.0,"scores":{}}
+        initial_signature=signature_request
+
+    model=Audio2Frames(checkpoint_path='final0',device='cuda',float16=False)
+    _,db=model(y,sr)
+    bt=sample_times(sigmoid(db.detach().float().cpu().numpy()),beats)
+
+    if signature_request=='Auto':
+        signature,duple_refinement=refine_duple_signature_with_beat_this(initial_signature,bt)
+    else:
+        signature=initial_signature
+        duple_refinement={
+            "applied":False,
+            "reason":"manual_signature",
+            "initial_signature":initial_signature,
+            "refined_signature":signature,
+        }
+
+    meter["initial_signature"]=initial_signature
+    meter["signature"]=signature
+    meter["duple_refinement"]=duple_refinement
+
     period=int(signature.split('/')[0])
-    log('INFO',f'signature utilisée {signature}; tempo {tempo:.3f}')
-    model=Audio2Frames(checkpoint_path='final0',device='cuda',float16=False); _,db=model(y,sr); bt=sample_times(sigmoid(db.detach().float().cpu().numpy()),beats)
+    log('INFO',f'signature utilisée {signature}; initiale {initial_signature}; tempo {tempo:.3f}')
     progress(48); rz,bz,hz=z(onset),z(bass),z(harm)
     specs=[('Beat This downbeat',bt),('Percussive onset',rz),('Bass CQT',bz),('Rhythm + Bass',.72*rz+.28*bz),('Harmonic novelty',hz),('R41-like fusion',.62*rz+.25*bz+.13*hz)]
     alg=[]
     for name,v in specs:
-        p=choose_phase(v,period); p['algorithm']=name; alg.append(p)
-    progress(60); log('INFO','analyse accords lv-chordia')
+        p=choose_phase(v,period)
+        p['algorithm']=name
+        alg.append(p)
+
+    phase_hist={}
+    for a in alg:
+        key=str(a["phase"])
+        phase_hist[key]=phase_hist.get(key,0)+1
+    convergence={
+        "distinct_phases":len(phase_hist),
+        "phase_histogram":phase_hist,
+        "unanimous":len(phase_hist)==1,
+    }
+
+    progress(60); log('INFO',f'phases {phase_hist}; unanimité={convergence["unanimous"]}')
+    log('INFO','analyse accords lv-chordia')
     rawsegs=chord_recognition(audio_path=str(audio),chord_dict_name='submission'); segs=[]
     for x in rawsegs or []:
         a=float(x.get('start_time',0)); b=float(x.get('end_time',a))
@@ -169,12 +256,19 @@ def analyze(audio:Path,signature_request:str,deps:Path,work:Path,progress,log):
             "stems_required": False,
         },
         "algorithms": alg,
+        "convergence": convergence,
         "segments": segs,
     }
 
 def self_test():
-    x=np.zeros(24); x[2::4]=1; assert choose_phase(x,4)['phase']==2
+    x=np.zeros(24); x[2::4]=1
+    cp=choose_phase(x,4)
+    assert cp['phase']==2
+    assert len(cp['phase_scores'])==4
+    sig,diag=refine_duple_signature_with_beat_this('2/4',x,threshold=.01)
+    assert sig=='4/4'
     beats=np.arange(0,8,.5); segs=[{"start":0,"end":8,"chord":"Cm"}]; assert grid(segs,beats,0,4,1)[0]['text']=='Cm - - -'
+    assert chord_for_interval([{"start":1.0,"end":2.0,"chord":"C"}],0.0,0.5)=='.'
     print('ENGINE_SELF_TEST_OK')
 
 if __name__=='__main__':
