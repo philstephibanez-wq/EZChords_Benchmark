@@ -1,0 +1,10 @@
+/.idea/
+/.vscode/
+/vendor/
+/var/
+data/*.sqlite
+data/*.sqlite-*
+.env.local
+.env.*.local
+__pycache__/
+*.pyc

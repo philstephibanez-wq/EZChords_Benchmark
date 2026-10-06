@@ -1,0 +1,116 @@
+{% extends 'base.html.twig' %}
+{% block title %}{{ run.title }} · EZChords Benchmark{% endblock %}
+{% block body %}
+
+<div class="card">
+<h1>{{ run.title }}{% if run.artist %} — {{ run.artist }}{% endif %}</h1>
+<div class="meta">
+Signature : {{ run.detected_signature ?: run.requested_signature }}
+· Tempo : {{ run.tempo ? run.tempo|number_format(3) ~ ' BPM' : '—' }}
+</div>
+</div>
+
+<div class="card">
+<h2>Lecture synchronisée <span style="font-size:12px;color:#777;font-weight:normal">Player V4g</span></h2>
+<div class="player-panel">
+<label style="display:flex;flex-direction:row;align-items:center;gap:6px">
+<input type="checkbox" id="mp3-enabled" {% if audio_available %}checked{% else %}disabled{% endif %}>
+MP3 original{% if not audio_available %} — absent pour cette ancienne analyse{% endif %}
+</label>
+
+<label style="display:flex;flex-direction:row;align-items:center;gap:6px">
+Niveau
+<select id="difficulty-level">
+<option value="beginner">Débutant</option>
+<option value="intermediate" selected>Intermédiaire</option>
+<option value="advanced">Confirmé</option>
+</select>
+</label>
+
+<button type="button" id="master-play">▶ Lire</button>
+<button type="button" id="master-stop">■ Stop</button>
+
+{% if audio_available %}
+<audio id="master-audio" preload="metadata" controls controlsList="nodownload" src="{{ path('bench_audio',{id:run.id}) }}"></audio>
+{% else %}
+<audio id="master-audio" preload="metadata" controls></audio>
+{% endif %}
+
+<div class="player-state" id="player-state">
+{% if audio_available %}
+Choisir un algorithme ci-dessous.
+{% else %}
+Lecture accords seule disponible. Le MP3 n'a pas été conservé pour cette ancienne analyse.
+{% endif %}
+</div>
+<div class="player-state" id="synth-state">Synthé : non initialisé</div>
+<div class="player-state">Le lecteur MP3 natif peut être utilisé directement ; le piano suit la timeline de l'algo sélectionné.</div>
+</div>
+</div>
+
+<div class="card">
+<form action="{{ path('bench_review',{id:run.id}) }}" method="post">
+
+{% for a in algorithms %}
+<div class="timeline-line" data-algo-row="{{ loop.index0 }}" data-algo-name="{{ a.algorithm|e('html_attr') }}">
+<div>
+<div class="algo-name">{{ a.algorithm }}</div>
+<div class="meta">P{{ a.phase }} · S {{ a.score|number_format(5) }} · M {{ a.margin|number_format(5) }}</div>
+<div class="algo-tools">
+<label class="listen-radio">
+<input type="radio" name="listen_algo" value="{{ loop.index0 }}" {% if loop.first %}checked{% endif %}>
+Écouter
+</label>
+<button type="button" class="listen-button" data-play-algo="{{ loop.index0 }}">▶</button>
+</div>
+</div>
+
+<div class="timeline" data-timeline="{{ loop.index0 }}">
+{% for m in a.grid %}
+<div class="measure" data-measure="{{ m.measure }}" data-start="{{ m.start_s is defined and m.start_s is not null ? m.start_s : '' }}">
+<span class="n">M{{ '%02d'|format(m.measure) }}</span>
+<div class="beats">
+{% for chord in m.text|trim|split(' ') %}
+{% if chord != '' %}
+<div class="beat" data-token="{{ chord|e('html_attr') }}">{{ chord }}</div>
+{% endif %}
+{% endfor %}
+</div>
+</div>
+{% endfor %}
+</div>
+
+<div class="choice">
+<label>
+<input type="radio" name="status[{{ a.algorithm }}]" value="approved"
+{% if a.review_status == 'approved' %}checked{% endif %} required>
+Bon
+</label>
+<label>
+<input type="radio" name="status[{{ a.algorithm }}]" value="rejected"
+{% if a.review_status == 'rejected' %}checked{% endif %} required>
+Pas bon
+</label>
+</div>
+</div>
+{% endfor %}
+
+<div class="row" style="margin-top:18px">
+<label>Référence
+<input name="reference" value="{{ review ? review.reference : 'Riffstation' }}">
+</label>
+<label style="flex:1">Commentaire
+<input name="comment" value="{{ review ? review.comment : '' }}">
+</label>
+<button type="submit">Enregistrer</button>
+</div>
+
+</form>
+</div>
+
+<script>
+window.EZCHORDS_AUDIO_AVAILABLE = {{ audio_available ? 'true' : 'false' }};
+</script>
+<script src="/js/benchmark-player.js"></script>
+
+{% endblock %}

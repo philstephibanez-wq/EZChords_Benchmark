@@ -1,0 +1,22 @@
+parameters:
+    app.database_path: '%kernel.project_dir%/data/benchmark.sqlite'
+
+services:
+    _defaults:
+        autowire: true
+        autoconfigure: true
+        bind:
+            $databasePath: '%app.database_path%'
+
+    App\:
+        resource: '../src/'
+        exclude:
+            - '../src/Kernel.php'
+
+    App\Service\BenchmarkLauncher:
+        arguments:
+            $database: '@App\Service\Database'
+            $projectDir: '%kernel.project_dir%'
+            $pythonExecutable: 'H:\Python\pythoncore-3.14-64\python.exe'
+            $dependencyRoot: 'H:\temp\EZChords_Benchmark\deps'
+            $keepUploads: true
