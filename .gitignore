@@ -8,3 +8,8 @@ data/*.sqlite-*
 .env.*.local
 __pycache__/
 *.pyc
+
+# Local benchmark runtime files
+public/benchmark-audio/
+README_V7N*.md
+scripts/preflight-v7n*.ps1
