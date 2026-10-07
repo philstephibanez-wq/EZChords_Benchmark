@@ -1,6 +1,6 @@
 {
-  "name": "ezchords/benchmark",
-  "description": "Persistent local benchmark for EZChords metric/downbeat experiments",
+  "name": "ezstudio/lab",
+  "description": "Autonomous and extensible audio-analysis laboratory for STEMS, CHORDS and LYRICS research",
   "type": "project",
   "license": "proprietary",
   "require": {

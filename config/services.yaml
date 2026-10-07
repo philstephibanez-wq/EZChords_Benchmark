@@ -18,5 +18,5 @@ services:
             $database: '@App\Service\Database'
             $projectDir: '%kernel.project_dir%'
             $pythonExecutable: 'H:\Python\pythoncore-3.14-64\python.exe'
-            $dependencyRoot: 'H:\temp\EZChords_Benchmark\deps'
+            $dependencyRoot: 'H:\temp\EZStudio_lab\deps'
             $keepUploads: true

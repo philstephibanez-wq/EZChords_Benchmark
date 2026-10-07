@@ -17,10 +17,10 @@ import librosa
 import numpy as np
 
 OBSERVABILITY_VERSION = "v10-observability-1"
-DEFAULT_ROOT = Path(r"H:\temp\EZChords_Benchmark\observability")
-DEFAULT_EXPORT_ROOT = Path(r"H:\temp\EZChords_Benchmark\exports")
+DEFAULT_ROOT = Path(r"H:\temp\EZStudio_lab\observability")
+DEFAULT_EXPORT_ROOT = Path(r"H:\temp\EZStudio_lab\exports")
 DEFAULT_MONGO_URI = "mongodb://127.0.0.1:27017"
-DEFAULT_MONGO_DB = "ezchords_benchmark"
+DEFAULT_MONGO_DB = "ezstudio_lab"
 
 TRACKS = ("master", "bass", "guitar", "piano", "other")
 
@@ -601,13 +601,13 @@ def build_observability_bundle(
     export_root: Path | None = None,
 ) -> dict[str, Any]:
     started = time.perf_counter()
-    mongo_uri = mongo_uri or os.getenv("EZCHORDS_MONGO_URI", DEFAULT_MONGO_URI)
-    mongo_db = mongo_db or os.getenv("EZCHORDS_MONGO_DB", DEFAULT_MONGO_DB)
+    mongo_uri = mongo_uri or os.getenv("EZSTUDIO_MONGO_URI", DEFAULT_MONGO_URI)
+    mongo_db = mongo_db or os.getenv("EZSTUDIO_MONGO_DB", DEFAULT_MONGO_DB)
     observability_root = observability_root or Path(
-        os.getenv("EZCHORDS_OBSERVABILITY_ROOT", str(DEFAULT_ROOT))
+        os.getenv("EZSTUDIO_OBSERVABILITY_ROOT", str(DEFAULT_ROOT))
     )
     export_root = export_root or Path(
-        os.getenv("EZCHORDS_EXPORT_ROOT", str(DEFAULT_EXPORT_ROOT))
+        os.getenv("EZSTUDIO_EXPORT_ROOT", str(DEFAULT_EXPORT_ROOT))
     )
 
     run_dir = observability_root / f"run-{run_id:06d}"
@@ -693,7 +693,7 @@ def build_observability_bundle(
         "event_count": len(events),
         "artifact_root": str(run_dir),
         "plots": plots,
-        "ezscore_read_only": True,
+        "ezstudio_autonomous": True,
     }
 
     mongo_status = _mongo_store(
@@ -718,7 +718,7 @@ def build_observability_bundle(
         "timebase": "original_audio_seconds",
         "contains_audio_binary": False,
         "reconstructible_plots": True,
-        "ezscore_modified": False,
+        "ezscore_runtime_dependency": False,
         "metric_algorithms_modified": False,
         "files": [],
     }
@@ -733,7 +733,7 @@ def build_observability_bundle(
     _write_json(run_dir / "manifest.json", manifest)
 
     export_root.mkdir(parents=True, exist_ok=True)
-    zip_path = export_root / f"EZChords_Run_{run_id:06d}_Scientific.zip"
+    zip_path = export_root / f"EZStudio_Run_{run_id:06d}_Scientific.zip"
     if zip_path.exists():
         zip_path.unlink()
 
@@ -762,7 +762,7 @@ def self_test() -> None:
     assert "EZScore" not in str(DEFAULT_ROOT)
     print("V10_OBSERVABILITY_SELF_TEST_OK")
     print("V10_MONGO_LOCALHOST_CONTRACT_OK")
-    print("V10_EZSCORE_READ_ONLY_CONTRACT_OK")
+    print("V10_EZSTUDIO_AUTONOMY_CONTRACT_OK")
 
 
 if __name__ == "__main__":

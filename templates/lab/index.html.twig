@@ -1,0 +1,101 @@
+{% extends 'base.html.twig' %}
+{% block title %}EZStudio_lab{% endblock %}
+{% block body %}
+
+<div class="card hero">
+  <div>
+    <h1>Laboratoire d'analyse audio</h1>
+    <div class="meta">Pipeline autonome, versionné et promouvable vers EZScore par contrats d'échange.</div>
+  </div>
+  <span class="badge ok">Runtime EZStudio_lab autonome</span>
+</div>
+
+<div class="pipeline">
+  <section class="item-card" id="stems">
+    <h2>STEMS</h2>
+    <p>Séparation instrumentale et vocale, artefacts persistants, diagnostics spectraux et comparaison de moteurs.</p>
+    <div class="tabs">Résultat · Diagnostics · Comparaison · Logs · Artefacts</div>
+  </section>
+
+  <section class="item-card" id="chords">
+    <h2>CHORDS</h2>
+    <p>Accords, métrique/downbeat, projection sur beat grid et moteur historique conservé sans modifier les six méthodes validées.</p>
+    <div class="tabs">Résultat · Diagnostics · Comparaison · Logs · Artefacts</div>
+  </section>
+
+  <section class="item-card">
+    <h2>NO-CHORD</h2>
+    <p>Sous-domaine CHORDS séparé : support harmonique, classe N, transitions et analyse multi-stems.</p>
+    <div class="tabs">Résultat · Diagnostics · Comparaison · Logs · Artefacts</div>
+  </section>
+
+  <section class="item-card" id="lyrics">
+    <h2>LYRICS</h2>
+    <p>Contrat prêt pour transcription et alignement. Les moteurs LYRICS seront intégrés dans une tranche dédiée.</p>
+    <div class="tabs">Résultat · Diagnostics · Comparaison · Logs · Artefacts</div>
+  </section>
+</div>
+
+<div class="card" id="import">
+<h2>Nouveau run</h2>
+<p class="meta">La tranche actuelle lance le pipeline validé STEMS → CHORDS / NO-CHORD. STEMS est désormais produit par EZStudio_lab, sans appel runtime à EZScore.</p>
+<form action="{{ path('bench_start') }}" method="post" enctype="multipart/form-data">
+<div class="row">
+<label>Audio
+<input type="file" name="audio" accept="audio/*,.mp3,.wav,.flac,.ogg,.m4a,.aac" required>
+</label>
+<label>Titre
+<input name="title">
+</label>
+<label>Artiste
+<input name="artist">
+</label>
+<label>Signature
+<select name="signature">
+<option>Auto</option><option>2/4</option><option>3/4</option><option>4/4</option>
+<option>6/8</option><option>9/8</option><option>12/8</option>
+</select>
+</label>
+<button type="submit">Lancer le run</button>
+</div>
+</form>
+</div>
+
+<div class="card" id="runs">
+<h2>Runs</h2>
+<table>
+<thead>
+<tr>
+  <th>#</th><th>Source</th><th>Pipeline</th><th>Signature</th><th>Tempo</th><th>Moteur</th><th>État</th>
+</tr>
+</thead>
+<tbody>
+{% for x in runs %}
+{% set r = x.row %}
+<tr>
+<td>{{ r.id }}</td>
+<td>
+  <a class="run-link" href="{{ path('lab_run',{id:r.id}) }}">{{ r.title }}</a>
+  {% if r.artist %}<div class="meta">{{ r.artist }}</div>{% endif %}
+</td>
+<td>
+  <div class="status-grid">
+    <span class="badge {{ x.stems_ready ? 'ok' : '' }}">STEMS</span>
+    <span class="badge {{ x.chords_ready ? 'ok' : '' }}">CHORDS</span>
+    <span class="badge {{ x.no_chord_ready ? 'ok' : '' }}">N</span>
+    <span class="badge {{ x.lyrics_ready ? 'ok' : '' }}">LYRICS</span>
+  </div>
+</td>
+<td>{{ r.detected_signature ?: r.requested_signature }}</td>
+<td>{{ r.tempo ? r.tempo|number_format(3) ~ ' BPM' : '—' }}</td>
+<td>{{ x.engine_version ?: '—' }}</td>
+<td>{{ r.status }}{% if r.progress is defined %} · {{ r.progress }}%{% endif %}</td>
+</tr>
+{% else %}
+<tr><td colspan="7">Aucun run.</td></tr>
+{% endfor %}
+</tbody>
+</table>
+</div>
+
+{% endblock %}

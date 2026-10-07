@@ -8,7 +8,7 @@ final class BenchmarkLauncher
         private readonly Database $database,
         private readonly string $projectDir = __DIR__.'/../..',
         private readonly string $pythonExecutable = 'H:\Python\pythoncore-3.14-64\python.exe',
-        private readonly string $dependencyRoot = 'H:\temp\EZChords_Benchmark\deps',
+        private readonly string $dependencyRoot = 'H:\temp\EZStudio_lab\deps',
         private readonly bool $keepUploads = true,
     ) {}
 

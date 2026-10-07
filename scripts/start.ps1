@@ -15,15 +15,17 @@ if (-not (Test-Path $router)) { throw "ROUTER_MISSING: $router" }
 
 $env:APP_ENV = "dev"
 $env:APP_DEBUG = "1"
-$env:BENCH_PYTHON = $python
-$env:BENCH_DEP_ROOT = "H:\temp\EZChords_Benchmark\deps"
+$env:EZSTUDIO_PYTHON = $python
+$env:EZSTUDIO_RUNTIME_ROOT = "H:\temp\EZStudio_lab"
+$env:EZSTUDIO_DEP_ROOT = "H:\temp\EZStudio_lab\deps"
+$env:EZSTUDIO_STEMS_CACHE_ROOT = "H:\temp\EZStudio_lab\stems"
+$env:EZSTUDIO_OBSERVABILITY_ROOT = "H:\temp\EZStudio_lab\observability"
+$env:EZSTUDIO_EXPORT_ROOT = "H:\temp\EZStudio_lab\exports"
+$env:EZSTUDIO_MONGO_DB = "ezstudio_lab"
 $env:KEEP_UPLOADS = "1"
 
-Write-Host "APP_ENV=$env:APP_ENV"
-Write-Host "APP_DEBUG=$env:APP_DEBUG"
-Write-Host "BENCH_PYTHON=$env:BENCH_PYTHON"
-Write-Host "BENCH_DEP_ROOT=$env:BENCH_DEP_ROOT"
-Write-Host "KEEP_UPLOADS=$env:KEEP_UPLOADS"
+Write-Host "EZStudio_lab"
+Write-Host "RUNTIME=$env:EZSTUDIO_RUNTIME_ROOT"
 Write-Host "DOCROOT=$public"
 
 $devCache = Join-Path $root "var\cache\dev"

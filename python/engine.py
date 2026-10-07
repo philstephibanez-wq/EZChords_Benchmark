@@ -20,9 +20,9 @@ AUTO = {"2/4": 2, "3/4": 3, "4/4": 4, "6/8": 6}
 ENGINE_VERSION = "r9-positive-harmonic-support"
 NO_CHORD = "N"
 
-# EZScore is READ-ONLY from this benchmark.
-DEFAULT_EZSCORE_STEMS_SCRIPT = Path(r"H:\EZScore\analysis\stems_only.py")
-DEFAULT_STEMS_CACHE_ROOT = Path(r"H:\temp\EZChords_Benchmark\stems")
+# EZStudio_lab owns its STEMS pipeline and runtime storage.
+DEFAULT_EZSTUDIO_STEMS_SCRIPT = Path(__file__).resolve().parent / "ezstudio" / "pipeline" / "stems" / "runner.py"
+DEFAULT_STEMS_CACHE_ROOT = Path(r"H:\temp\EZStudio_lab\stems")
 
 
 def z(x):
@@ -296,25 +296,25 @@ def _read_current_stem_run(storage_root: Path) -> tuple[str, Path]:
     return run, run_dir
 
 
-def ensure_ezscore_stems(audio: Path, work: Path, log) -> dict:
+def ensure_ezstudio_stems(audio: Path, work: Path, log) -> dict:
     """
-    READ-ONLY contract toward H:\\EZScore:
-    - never writes under EZScore;
-    - invokes its canonical stems_only.py only;
-    - all generated data is redirected to H:\\temp\\EZChords_Benchmark\\stems.
+    EZStudio_lab autonomous STEMS contract:
+    - no EZScore runtime dependency;
+    - invokes EZStudio_lab own canonical STEMS runner;
+    - generated data lives under H:\\temp\\EZStudio_lab\\stems.
     """
-    script = Path(os.getenv("EZCHORDS_EZSCORE_STEMS_SCRIPT", str(DEFAULT_EZSCORE_STEMS_SCRIPT)))
+    script = Path(os.getenv("EZSTUDIO_STEMS_SCRIPT", str(DEFAULT_EZSTUDIO_STEMS_SCRIPT)))
     if not script.is_file():
-        return {"available": False, "reason": f"script EZScore absent: {script}"}
+        return {"available": False, "reason": f"script EZStudio_lab absent: {script}"}
 
     audio_hash = sha256_file(audio)
-    cache_root = Path(os.getenv("EZCHORDS_STEMS_CACHE_ROOT", str(DEFAULT_STEMS_CACHE_ROOT)))
+    cache_root = Path(os.getenv("EZSTUDIO_STEMS_CACHE_ROOT", str(DEFAULT_STEMS_CACHE_ROOT)))
     storage_root = cache_root / audio_hash
     progress_file = storage_root / "progress.json"
     storage_root.mkdir(parents=True, exist_ok=True)
 
     if not (storage_root / "current.json").is_file():
-        log("INFO", f"stems: appel READ-ONLY du script EZScore; sortie={storage_root}")
+        log("INFO", f"stems: pipeline autonome EZStudio_lab; sortie={storage_root}")
         subprocess.run(
             [
                 sys.executable,
@@ -327,7 +327,7 @@ def ensure_ezscore_stems(audio: Path, work: Path, log) -> dict:
             check=True,
         )
     else:
-        log("INFO", f"stems: cache benchmark réutilisé {storage_root}")
+        log("INFO", f"stems: cache EZStudio_lab réutilisé {storage_root}")
 
     run_name, run_dir = _read_current_stem_run(storage_root)
     manifest_path = run_dir / "manifest.json"
@@ -345,8 +345,8 @@ def ensure_ezscore_stems(audio: Path, work: Path, log) -> dict:
 
     return {
         "available": True,
-        "source": "EZScore/analysis/stems_only.py",
-        "read_only_ezscore": True,
+        "source": "EZStudio_lab/python/ezstudio/pipeline/stems/runner.py",
+        "ezstudio_autonomous": True,
         "storage_root": str(storage_root),
         "run": run_name,
         "manifest": manifest,
@@ -530,7 +530,7 @@ def analyze(audio: Path, signature_request: str, deps: Path, work: Path, progres
     progress(74)
     stems_info = {"available": False}
     try:
-        stems_info = ensure_ezscore_stems(audio, work, log)
+        stems_info = ensure_ezstudio_stems(audio, work, log)
         if stems_info.get("available"):
             mix = make_instrumental_mix(stems_info["stems"], work, sr=sr)
             inst_segs = recognize(chord_recognition, mix, "ismir2017")
@@ -611,7 +611,7 @@ def analyze(audio: Path, signature_request: str, deps: Path, work: Path, progres
         stems_info = {
             "available": False,
             "reason": f"{type(exc).__name__}: {exc}",
-            "read_only_ezscore": True,
+            "ezstudio_autonomous": True,
         }
 
     # Evidence-only consensus: count how many available variants say N.
@@ -668,7 +668,7 @@ def analyze(audio: Path, signature_request: str, deps: Path, work: Path, progres
             "no_chord_dictionary": "ismir2017",
             "active_no_chord_policy": "positive_harmonic_support_any_stem",
             "stems_role": "active_no_chord_decision",
-            "ezscore_read_only": True,
+            "ezstudio_autonomous": True,
         },
         "algorithms": alg,
         "convergence": convergence,
@@ -680,7 +680,7 @@ def analyze(audio: Path, signature_request: str, deps: Path, work: Path, progres
                 "display_n_8": "𝄾",
                 "midi_on_N": "silence",
                 "metric_algorithms_modified": False,
-                "ezscore_modified": False,
+                "ezscore_runtime_dependency": False,
             },
             "active_variant": "E_positive_harmonic_support",
             "variants": benchmark_variants,
@@ -733,7 +733,7 @@ def self_test():
     assert "harmonic_silence_mask" not in defined_functions
     print("ENGINE_SELF_TEST_OK")
     print("N_INTERNAL_CONTRACT_OK")
-    print("EZSCORE_READ_ONLY_CONTRACT_OK")
+    print("EZSTUDIO_AUTONOMY_CONTRACT_OK")
 
 
 if __name__ == "__main__":

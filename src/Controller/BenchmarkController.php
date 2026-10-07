@@ -13,7 +13,7 @@ use Symfony\Component\Routing\Attribute\Route;
 
 final class BenchmarkController extends AbstractController
 {
-    #[Route('/', name: 'bench_index', methods: ['GET'])]
+    #[Route('/legacy', name: 'bench_index', methods: ['GET'])]
     public function index(Database $db): Response
     {
         return $this->render('benchmark/index.html.twig', [
@@ -128,7 +128,7 @@ final class BenchmarkController extends AbstractController
 
         // Contract V8B: this path MUST reuse already-generated stems.
         // It must never trigger a new stem separation.
-        $cacheRoot = 'H:\\temp\\EZChords_Benchmark\\stems';
+        $cacheRoot = 'H:\\temp\\EZStudio_lab\\stems';
         $currentJson = $cacheRoot
             .DIRECTORY_SEPARATOR.$audioHash
             .DIRECTORY_SEPARATOR.'current.json';
