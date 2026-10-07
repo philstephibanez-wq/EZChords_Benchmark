@@ -17,7 +17,7 @@ import torch
 
 FPS = 50.0
 AUTO = {"2/4": 2, "3/4": 3, "4/4": 4, "6/8": 6}
-ENGINE_VERSION = "r8-stem-no-chord-vote-3of4"
+ENGINE_VERSION = "r9-positive-harmonic-support"
 NO_CHORD = "N"
 
 # EZScore is READ-ONLY from this benchmark.
@@ -536,35 +536,75 @@ def analyze(audio: Path, signature_request: str, deps: Path, work: Path, progres
             inst_segs = recognize(chord_recognition, mix, "ismir2017")
             benchmark_variants.append(n_diag("C_instrumental_stems_ismir2017", inst_segs, beats))
 
-            stem_variant_masks = []
-            for stem_name in ("bass", "guitar", "piano", "other"):
-                stem_segs = recognize(chord_recognition, Path(stems_info["stems"][stem_name]), "ismir2017")
+            stem_names = ("bass", "guitar", "piano", "other")
+            stem_labels_by_name = {}
+            stem_masks_by_name = {}
+
+            for stem_name in stem_names:
+                stem_segs = recognize(
+                    chord_recognition,
+                    Path(stems_info["stems"][stem_name]),
+                    "ismir2017",
+                )
                 stem_diag = n_diag(f"D_{stem_name}_ismir2017", stem_segs, beats)
                 benchmark_variants.append(stem_diag)
-                stem_variant_masks.append(np.asarray(stem_diag["mask"], dtype=bool))
 
-            # V8 active N policy: vocals/drums excluded.
-            # A beat is N when at least 3 of the 4 accompaniment stems
-            # independently report N.
-            if len(stem_variant_masks) == 4:
-                stem_matrix = np.vstack(stem_variant_masks)
-                stem_vote_count = stem_matrix.sum(axis=0)
-                active_mask = stem_vote_count >= 3
-                stem_vote_diag = {
-                    "name": "E_stems_vote_3of4",
+                labels = beat_labels(stem_segs, beats)
+                stem_labels_by_name[stem_name] = labels
+                stem_masks_by_name[stem_name] = np.asarray(stem_diag["mask"], dtype=bool)
+
+            # V9 active N policy: POSITIVE harmonic support.
+            #
+            # A silent/absent stem does not vote against the harmony.
+            # The current chord is kept whenever at least one accompaniment
+            # stem independently reports a harmonic label other than N.
+            # N is emitted only when NONE of bass/guitar/piano/other reports
+            # harmonic support on the beat.
+            if len(stem_masks_by_name) == len(stem_names):
+                stem_n_matrix = np.vstack([
+                    stem_masks_by_name[name]
+                    for name in stem_names
+                ])
+                support_matrix = ~stem_n_matrix
+                support_count = support_matrix.sum(axis=0)
+                active_mask = support_count == 0
+
+                support_beats = []
+                for i in range(len(active_mask)):
+                    labels = {
+                        name: stem_labels_by_name[name][i]
+                        for name in stem_names
+                    }
+                    supporting = [
+                        name
+                        for name in stem_names
+                        if labels[name] != NO_CHORD
+                    ]
+                    support_beats.append({
+                        "beat": int(i),
+                        "support_count": int(support_count[i]),
+                        "supporting_stems": supporting,
+                        "labels": labels,
+                        "is_no_chord": bool(active_mask[i]),
+                    })
+
+                positive_support_diag = {
+                    "name": "E_positive_harmonic_support",
                     "no_chord_beats": int(active_mask.sum()),
                     "total_beats": int(len(active_mask)),
                     "ratio": float(active_mask.mean()) if len(active_mask) else 0.0,
                     "indices": [int(i) for i in np.flatnonzero(active_mask)],
                     "mask": [bool(x) for x in active_mask],
-                    "vote_rule": "N if >=3 of bass,guitar,piano,other report N",
-                    "sources": ["bass", "guitar", "piano", "other"],
+                    "rule": "N only if no bass/guitar/piano/other stem reports a non-N label",
+                    "sources": list(stem_names),
+                    "beat_support": support_beats,
                 }
-                benchmark_variants.append(stem_vote_diag)
+                benchmark_variants.append(positive_support_diag)
                 log(
                     "INFO",
-                    f'no-chord actif E_stems_vote_3of4 = '
-                    f'{stem_vote_diag["no_chord_beats"]}/{stem_vote_diag["total_beats"]}'
+                    f'no-chord actif E_positive_harmonic_support = '
+                    f'{positive_support_diag["no_chord_beats"]}/'
+                    f'{positive_support_diag["total_beats"]}'
                 )
     except Exception as exc:
         log("WARN", f"benchmark stems indisponible: {type(exc).__name__}: {exc}")
@@ -626,7 +666,7 @@ def analyze(audio: Path, signature_request: str, deps: Path, work: Path, progres
             "chord_engine": "lv-chordia",
             "chord_dictionary": "submission",
             "no_chord_dictionary": "ismir2017",
-            "active_no_chord_policy": "stems_vote_3of4",
+            "active_no_chord_policy": "positive_harmonic_support_any_stem",
             "stems_role": "active_no_chord_decision",
             "ezscore_read_only": True,
         },
@@ -642,7 +682,7 @@ def analyze(audio: Path, signature_request: str, deps: Path, work: Path, progres
                 "metric_algorithms_modified": False,
                 "ezscore_modified": False,
             },
-            "active_variant": "E_stems_vote_3of4",
+            "active_variant": "E_positive_harmonic_support",
             "variants": benchmark_variants,
             "evidence_only": evidence,
             "stems": stems_info,
@@ -671,13 +711,16 @@ def self_test():
     mask[1] = True
     assert grid(segs, beats, 0, 4, 1, no_chord_mask=mask)[0]["text"] == "Cm N Cm -"
 
-    votes = np.vstack([
-        np.array([True, False, True]),
-        np.array([True, False, True]),
-        np.array([True, True, False]),
-        np.array([False, True, True]),
+    # Positive-support contract:
+    # N only when every accompaniment stem is N.
+    n_masks = np.vstack([
+        np.array([True,  True,  False, True]),
+        np.array([True,  True,  True,  True]),
+        np.array([True,  False, True,  True]),
+        np.array([True,  True,  True,  True]),
     ])
-    assert (votes.sum(axis=0) >= 3).tolist() == [True, False, True]
+    support_count = (~n_masks).sum(axis=0)
+    assert (support_count == 0).tolist() == [True, False, False, True]
 
     import ast
     source = Path(__file__).read_text(encoding="utf-8")

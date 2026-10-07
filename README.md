@@ -1,42 +1,19 @@
-# EZChords_Benchmark V1c — Console + recette hotfix
+# Timing diagnostic R16A
 
-Ce correctif traite les deux erreurs de la recette Windows :
+Fixes the previous diagnostic reader: cached stems are IEEE float WAV
+(format tag 3), so Python's standard `wave` module cannot read them.
 
-1. `Symfony\Component\Console\Application` absent :
-   `symfony/console` n'était pas déclaré.
-2. `ENGINE_SELF_TEST_SKIPPED` :
-   la recette cherchait `benchmark_engine.py` au lieu du vrai moteur `python\engine.py`.
+This version uses `soundfile`, already available in the EZChords analysis environment.
 
-## Application
+Run:
 
 ```powershell
 cd H:\EZChords_Benchmark
 
-tar -xf "$env:USERPROFILE\Downloads\EZChords_Benchmark_V1c_CONSOLE_RECETTE_HOTFIX.zip" `
-  -C H:\EZChords_Benchmark `
-  --strip-components=1
+H:\Python\pythoncore-3.14-64\python.exe `
+  .\scripts\diagnose-run-timing.py `
+  --run-id 16
 ```
 
-Puis :
-
-```powershell
-composer update symfony/console --with-dependencies
-```
-
-Puis :
-
-```powershell
-powershell -ExecutionPolicy Bypass -File .\scripts\recette.ps1
-```
-
-Attendu :
-
-```text
-PHP_APP_LINT_OK
-PYTHON_COMPILE_OK
-ENGINE_SELF_TEST_OK
-...
-RECETTE_OK
-```
-
-Aucune logique benchmark n'est modifiée.
+Output:
+`diagnostics\run-16-timing.json`
