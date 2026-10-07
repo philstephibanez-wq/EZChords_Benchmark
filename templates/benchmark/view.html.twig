@@ -2,12 +2,88 @@
 {% block title %}{{ run.title }} · EZChords Benchmark{% endblock %}
 {% block body %}
 
+{# Transitional compatibility: avoid strict_variables failures while old/new
+   benchmark result contracts coexist. These defaults are presentation-only. #}
+{% set silence_diagnostic = silence_diagnostic|default(null) %}
+{% set no_chord_benchmark = no_chord_benchmark|default(null) %}
+
+{% set signature_used = run.detected_signature ?: run.requested_signature %}
+{% set denominator = signature_used and '/' in signature_used ? signature_used|split('/')[1] : '4' %}
+{% set rest_symbol = denominator == '8' ? '𝄾' : '𝄽' %}
+
+{% if run.status != 'done' %}
+<div class="card">
+<h1>{{ run.title }}{% if run.artist %} — {{ run.artist }}{% endif %}</h1>
+
+{% if run.status == 'error' %}
+<h2>Analyse en erreur</h2>
+<div class="meta">{{ run.error ?: 'Erreur inconnue.' }}</div>
+{% else %}
+<h2>Analyse asynchrone en cours</h2>
+<div style="margin:12px 0;height:16px;background:#ddd;position:relative">
+  <div id="run-progress-bar" style="height:100%;width:{{ run.progress }}%;background:#555"></div>
+</div>
+<div id="run-progress-text"><b>{{ run.progress }}%</b> · {{ run.status }}</div>
+<div class="meta" style="margin-top:8px">La requête HTTP est libérée. Le worker Python continue indépendamment.</div>
+<pre id="run-log-tail" style="margin-top:12px;max-height:280px;overflow:auto;white-space:pre-wrap;background:#111;color:#ddd;padding:10px"></pre>
+
+<script>
+(() => {
+  const statusUrl = {{ path('bench_status', {id:run.id})|json_encode|raw }};
+  const bar = document.getElementById('run-progress-bar');
+  const text = document.getElementById('run-progress-text');
+  const log = document.getElementById('run-log-tail');
+
+  async function poll() {
+    try {
+      const response = await fetch(statusUrl, {cache: 'no-store'});
+      const data = await response.json();
+
+      if (!response.ok) throw new Error(data.error || ('HTTP ' + response.status));
+
+      bar.style.width = Math.max(0, Math.min(100, Number(data.progress || 0))) + '%';
+      text.innerHTML = '<b>' + Number(data.progress || 0) + '%</b> · ' + data.status;
+
+      if (Array.isArray(data.logs)) {
+        log.textContent = data.logs.map(row =>
+          (row.created_at ? row.created_at + ' ' : '') +
+          (row.level ? row.level + ' ' : '') +
+          (row.message || '')
+        ).join('\n');
+        log.scrollTop = log.scrollHeight;
+      }
+
+      if (data.done) {
+        location.reload();
+        return;
+      }
+
+      if (data.status === 'error') {
+        location.reload();
+        return;
+      }
+    } catch (err) {
+      text.textContent = 'Suivi temporairement indisponible : ' + (err.message || String(err));
+    }
+
+    setTimeout(poll, 1000);
+  }
+
+  poll();
+})();
+</script>
+{% endif %}
+</div>
+{% endif %}
+
+{% if run.status == 'done' %}
 <div class="card">
 <h1>{{ run.title }}{% if run.artist %} — {{ run.artist }}{% endif %}</h1>
 <div class="meta">
-Signature : {{ run.detected_signature ?: run.requested_signature }}
+Signature : {{ signature_used }}
 · Tempo : {{ run.tempo ? run.tempo|number_format(3) ~ ' BPM' : '—' }}
 </div>
+
 {% if meter_diagnostic %}
 <div class="meta" style="margin-top:6px">
 Auto métrique :
@@ -18,22 +94,49 @@ initiale {{ meter_diagnostic.initial_signature ?? meter_diagnostic.signature }}
 {% endif %}
 </div>
 {% endif %}
+
 {% if convergence %}
 <div class="meta" style="margin-top:4px">
 Convergence : {{ convergence.distinct_phases }} phase(s) distincte(s)
 {% if convergence.unanimous %}· <b>unanimité des 6 méthodes</b>{% endif %}
 </div>
 {% endif %}
-{% if silence_diagnostic %}
+
+{% if no_chord_benchmark %}
+<div class="meta" style="margin-top:8px">
+<b>No-Chord V7N</b> · actif : {{ no_chord_benchmark.active_variant }}
+· interne <code>N</code> · affichage {{ rest_symbol }}
+· EZScore read-only
+</div>
 <div class="meta" style="margin-top:4px">
-No-chord : <b>{{ silence_diagnostic.silent_beats }}</b>/{{ silence_diagnostic.total_beats }} beats
-· RMS seuil {{ silence_diagnostic.rms_threshold_db|number_format(1) }} dB
+{% for v in no_chord_benchmark.variants %}
+{% if v.error is defined %}
+{{ v.name }} = erreur
+{% else %}
+{{ v.name }} = {{ v.no_chord_beats }}/{{ v.total_beats }}
+{% endif %}
+{% if not loop.last %} · {% endif %}
+{% endfor %}
 </div>
 {% endif %}
 </div>
 
 <div class="card">
-<h2>Lecture synchronisée <span style="font-size:12px;color:#777;font-weight:normal">Player V6b</span></h2>
+<div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+<a
+  id="reanalyze-cached-stems"
+  href="{{ path('bench_reanalyze_cached_stems', {id:run.id}) }}"
+  style="display:inline-block;padding:9px 14px;border:1px solid #888;border-radius:6px;text-decoration:none;font-weight:600"
+>Ré-analyser avec stems en cache</a>
+<span class="meta">
+Recalcule accords / N / grilles sur le MP3 existant.
+Aucun redécoupage de stems : l'action est refusée si le cache stems n'existe pas.
+</span>
+</div>
+</div>
+
+<div class="card">
+<h2>Lecture synchronisée <span style="font-size:12px;color:#777;font-weight:normal">Player V7N</span></h2>
 <div class="player-panel">
 <label style="display:flex;flex-direction:row;align-items:center;gap:6px">
 <input type="checkbox" id="mp3-enabled" {% if audio_available %}checked{% else %}disabled{% endif %}>
@@ -111,9 +214,10 @@ P{{ p.phase }}={{ p.score|number_format(4) }}{% if not loop.last %} · {% endif 
 <div class="measure" data-measure="{{ m.measure }}" data-start="{{ m.start_s is defined and m.start_s is not null ? m.start_s : '' }}">
 <span class="n">M{{ '%02d'|format(m.measure) }}</span>
 <div class="beats">
-{% for chord in m.text|trim|split(' ') %}
+{% set tokens = m.tokens is defined ? m.tokens : m.text|trim|split(' ') %}
+{% for chord in tokens %}
 {% if chord != '' %}
-<div class="beat" data-token="{{ chord|e('html_attr') }}"><span class="chord-label">{{ chord }}</span></div>
+<div class="beat" data-token="{{ chord|e('html_attr') }}"><span class="chord-label">{{ chord == 'N' ? rest_symbol : chord }}</span></div>
 {% endif %}
 {% endfor %}
 </div>
@@ -150,6 +254,9 @@ Bon
 <script>
 window.EZCHORDS_AUDIO_AVAILABLE = {{ audio_available ? 'true' : 'false' }};
 </script>
-<script src="/js/benchmark-player.js?v=5"></script>
+<script src="/js/benchmark-player.js?v=7n"></script>
+<script src="/js/benchmark-volume-v8.js?v=8"></script>
+
+{% endif %}
 
 {% endblock %}
