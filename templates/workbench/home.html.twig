@@ -1,11 +1,12 @@
 {% extends 'base.html.twig' %}
-{% block title %}EZStudio_lab{% endblock %}
+{% block title %}Catalogue · EZStudio_lab{% endblock %}
 {% block body %}
 <div class="card hero">
   <div>
-    <h1>Chansons analysées</h1>
-    <div class="meta">Catalogue du laboratoire et état du pipeline par chanson.</div>
+    <h1>Catalogue</h1>
+    <div class="meta">Toutes les chansons importées, analysées ou non, et l'état de chaque étape.</div>
   </div>
+  <a class="button" href="{{ path('workbench_import') }}">Importer une chanson</a>
 </div>
 
 <div class="card">
@@ -13,12 +14,11 @@
 <thead>
 <tr>
   <th>Chanson</th>
+  <th>PROFILE</th>
   <th>STEMS</th>
   <th>CHORDS</th>
   <th>LYRICS</th>
-  <th>Runs</th>
-  <th>Dernier run</th>
-  <th></th>
+  <th>Actions</th>
 </tr>
 </thead>
 <tbody>
@@ -29,25 +29,115 @@
     {% if song.artist %}<div class="meta">{{ song.artist }}</div>{% endif %}
     <div class="meta">{{ song.source_filename }}</div>
   </td>
-  <td><span class="badge {{ song.stems_ready ? 'ok' : '' }}">{{ song.stems_ready ? 'Prêt' : '—' }}</span></td>
-  <td><span class="badge {{ song.chords_ready ? 'ok' : '' }}">{{ song.chords_ready ? 'Prêt' : '—' }}</span></td>
-  <td><span class="badge {{ song.lyrics_ready ? 'ok' : '' }}">{{ song.lyrics_ready ? 'Prêt' : '—' }}</span></td>
-  <td>{{ song.run_count }}</td>
-  <td>{{ song.latest_run_id ? '#' ~ song.latest_run_id : '—' }}</td>
+
+  {% for key in ['profile','stems','chords','lyrics'] %}
+    {% set s = attribute(song, key) %}
+    <td>
+      {% if s.state == 'done' %}
+        <span class="badge ok">Prêt</span>
+      {% elseif s.state == 'queued' %}
+        <span class="badge">En attente{% if s.progress is not null %} · {{ s.progress }}%{% endif %}</span>
+      {% elseif s.state == 'running' %}
+        <span class="badge warn">En cours{% if s.progress is not null %} · {{ s.progress }}%{% endif %}</span>
+      {% elseif s.state == 'error' %}
+        <span class="badge warn">Erreur</span>
+      {% elseif s.state == 'configured' %}
+        <span class="badge">Configuré</span>
+      {% else %}
+        <span class="badge">—</span>
+      {% endif %}
+    </td>
+  {% endfor %}
+
   <td style="white-space:nowrap">
+    <a class="button secondary" href="{{ path('workbench_profile',{song:song.id}) }}">PROFILE</a>
+    {% if song.profile.run_id is defined and song.profile.run_id %}
+      <a class="button secondary"
+         href="{{ path('profile_feedback_zip',{id:song.id}) }}"
+         title="Créer le ZIP ADN à transmettre pour diagnostic">ZIP ADN</a>
+    {% endif %}
     <a class="button secondary" href="{{ path('workbench_stems',{song:song.id}) }}">STEMS</a>
-    {% if song.latest_chords_run_id %}
-      <a class="button secondary" href="{{ path('bench_view',{id:song.latest_chords_run_id}) }}">CHORDS</a>
-    {% endif %}
-    {% if song.latest_run_id %}
-      <a class="button secondary" href="{{ path('lab_run',{id:song.latest_run_id}) }}">RUN</a>
-    {% endif %}
+    <a class="button secondary" href="{{ path('lab_chords_experiment',{song:song.id}) }}">CHORDS</a>
+    <a class="button secondary" href="{{ path('workbench_lyrics',{song:song.id}) }}">LYRICS</a>
+
+    <form method="post"
+          action="{{ path('catalog_delete',{id:song.id}) }}"
+          class="catalog-delete-form"
+          data-song-title="{{ song.title|e('html_attr') }}"
+          style="display:inline">
+      <button type="submit"
+              class="secondary catalog-delete-button"
+              title="Supprimer la chanson"
+              aria-label="Supprimer {{ song.title }}">🗑</button>
+    </form>
   </td>
 </tr>
 {% else %}
-<tr><td colspan="7">Aucune chanson analysée.</td></tr>
+<tr>
+  <td colspan="6">
+    Aucune chanson dans le catalogue.
+    <a href="{{ path('workbench_import') }}">Importer une chanson</a>
+  </td>
+</tr>
 {% endfor %}
 </tbody>
 </table>
 </div>
+
+<script>
+(() => {
+  for (const form of document.querySelectorAll('.catalog-delete-form')) {
+    form.addEventListener('submit', async (event) => {
+      event.preventDefault();
+
+      const button = form.querySelector('.catalog-delete-button');
+      const title = form.dataset.songTitle || 'cette chanson';
+
+      if (!window.confirm(
+        `Supprimer définitivement « ${title} » et toutes ses données de laboratoire ?`
+      )) {
+        return;
+      }
+
+      const originalText = button ? button.textContent : '';
+      if (button) {
+        button.disabled = true;
+        button.textContent = '…';
+        button.title = 'Suppression en cours';
+      }
+
+      try {
+        const response = await fetch(form.action, {
+          method: 'POST',
+          credentials: 'same-origin',
+          headers: {'X-Requested-With': 'XMLHttpRequest'}
+        });
+
+        if (response.redirected) {
+          window.location.assign(response.url);
+          return;
+        }
+
+        if (response.ok) {
+          window.location.reload();
+          return;
+        }
+
+        const message = (await response.text()).trim()
+          || `Suppression impossible (HTTP ${response.status})`;
+        window.alert(message);
+      } catch (error) {
+        window.alert(`Erreur de suppression : ${error}`);
+      } finally {
+        if (button && document.body.contains(button)) {
+          button.disabled = false;
+          button.textContent = originalText;
+          button.title = 'Supprimer la chanson';
+        }
+      }
+    });
+  }
+})();
+</script>
+
 {% endblock %}

@@ -140,6 +140,15 @@ ON analysis_jobs(status, created_at, id);
 SQL;
 
         $this->pdo->exec($sql);
+
+        $songColumns = $this->pdo->query("PRAGMA table_info(songs)")->fetchAll();
+        $songColumnNames = array_map(
+            static fn(array $row): string => (string)$row['name'],
+            $songColumns
+        );
+        if (!in_array('source_path', $songColumnNames, true)) {
+            $this->pdo->exec('ALTER TABLE songs ADD COLUMN source_path TEXT');
+        }
     }
 
     public function allRuns(): array
@@ -777,6 +786,7 @@ SQL;
             'protocol' => 'ezscore.analysis-job.v2',
             'job_id' => (int)$job['id'],
             'kind' => (string)$job['kind'],
+            'status' => (string)$job['status'],
             'resource_class' => 'gpu',
             'priority' => 50,
             'song_id' => (int)$job['song_id'],
@@ -825,7 +835,7 @@ SQL;
             throw new \RuntimeException('job_not_running');
         }
 
-        if ((string)$job['kind'] !== 'stems') {
+        if (in_array((string)$job['kind'], ['benchmark','chords_scientific'], true)) {
             $run = $this->run((int)$job['run_id']);
             if ($run === null || (string)$run['status'] !== 'done') {
                 throw new \RuntimeException('benchmark_run_not_done');
@@ -869,6 +879,168 @@ SQL;
                 )->execute([$message, $now, (int)$job['run_id']]);
             }
         }
+    }
+
+
+
+    public function cancelStaleAnalysisJobsForSongs(
+        array $songIds,
+        int $staleSeconds = 60
+    ): array {
+        $songIds = array_values(array_unique(array_map('intval', $songIds)));
+        $songIds = array_values(array_filter(
+            $songIds,
+            static fn(int $id): bool => $id > 0
+        ));
+        if ($songIds === []) return [];
+
+        $staleSeconds = max(30, $staleSeconds);
+        $cutoff = gmdate('c', time() - $staleSeconds);
+        $marks = implode(',', array_fill(0, count($songIds), '?'));
+
+        $stmt = $this->pdo()->prepare(
+            "SELECT id,kind,status,updated_at
+             FROM analysis_jobs
+             WHERE song_id IN ($marks)
+               AND status IN ('running','cancelling')
+               AND updated_at <= ?
+             ORDER BY id"
+        );
+        $i = 1;
+        foreach ($songIds as $id) {
+            $stmt->bindValue($i++, $id, \PDO::PARAM_INT);
+        }
+        $stmt->bindValue($i, $cutoff, \PDO::PARAM_STR);
+        $stmt->execute();
+        $stale = $stmt->fetchAll();
+
+        if ($stale === []) return [];
+
+        $ids = array_map(
+            static fn(array $row): int => (int)$row['id'],
+            $stale
+        );
+        $jobMarks = implode(',', array_fill(0, count($ids), '?'));
+        $update = $this->pdo()->prepare(
+            "UPDATE analysis_jobs
+             SET status='cancelled',
+                 error='catalog_delete_stale_orphan_cancelled',
+                 updated_at=?
+             WHERE id IN ($jobMarks)
+               AND status IN ('running','cancelling')"
+        );
+        $i = 1;
+        $update->bindValue($i++, gmdate('c'), \PDO::PARAM_STR);
+        foreach ($ids as $id) {
+            $update->bindValue($i++, $id, \PDO::PARAM_INT);
+        }
+        $update->execute();
+
+        return $stale;
+    }
+
+    public function requestAnalysisCancellationForSongs(array $songIds): array
+    {
+        $songIds = array_values(array_unique(array_map('intval', $songIds)));
+        $songIds = array_values(array_filter(
+            $songIds,
+            static fn(int $id): bool => $id > 0
+        ));
+        if ($songIds === []) return [];
+
+        $marks = implode(',', array_fill(0, count($songIds), '?'));
+        $pdo = $this->pdo();
+        $now = gmdate('c');
+
+        $pdo->beginTransaction();
+        try {
+            $stmt = $pdo->prepare(
+                "UPDATE analysis_jobs
+                 SET status='cancelled',
+                     error='catalog_delete_cancelled_before_claim',
+                     progress=0,
+                     updated_at=?
+                 WHERE song_id IN ($marks) AND status='queued'"
+            );
+            $stmt->execute([$now, ...$songIds]);
+
+            $stmt = $pdo->prepare(
+                "UPDATE analysis_jobs
+                 SET status='cancelling',
+                     error='catalog_delete_cancellation_requested',
+                     updated_at=?
+                 WHERE song_id IN ($marks) AND status='running'"
+            );
+            $stmt->execute([$now, ...$songIds]);
+
+            $stmt = $pdo->prepare(
+                "SELECT id,kind,status,progress,updated_at
+                 FROM analysis_jobs
+                 WHERE song_id IN ($marks)
+                 ORDER BY id"
+            );
+            $stmt->execute($songIds);
+            $rows = $stmt->fetchAll();
+            $pdo->commit();
+            return $rows;
+        } catch (\Throwable $e) {
+            if ($pdo->inTransaction()) $pdo->rollBack();
+            throw $e;
+        }
+    }
+
+    public function markAnalysisJobCancelled(int $id): void
+    {
+        $job = $this->analysisJob($id);
+        if ($job === null) {
+            throw new \RuntimeException('job_not_found');
+        }
+        if (!in_array((string)$job['status'], ['cancelling','cancelled'], true)) {
+            throw new \RuntimeException('job_not_cancelling');
+        }
+
+        $now = gmdate('c');
+        $this->pdo()->prepare(
+            "UPDATE analysis_jobs
+             SET status='cancelled',
+                 error='catalog_delete_cancelled',
+                 updated_at=?
+             WHERE id=?"
+        )->execute([$now, $id]);
+
+        if ($job['run_id'] !== null) {
+            $run = $this->run((int)$job['run_id']);
+            if ($run !== null && (string)$run['status'] !== 'done') {
+                $this->pdo()->prepare(
+                    "UPDATE benchmark_runs
+                     SET status='error',
+                         error='cancelled_by_catalog_delete',
+                         updated_at=?
+                     WHERE id=?"
+                )->execute([$now, (int)$job['run_id']]);
+            }
+        }
+    }
+
+    public function activeOrCancellingAnalysisJobsForSongs(array $songIds): array
+    {
+        $songIds = array_values(array_unique(array_map('intval', $songIds)));
+        $songIds = array_values(array_filter(
+            $songIds,
+            static fn(int $id): bool => $id > 0
+        ));
+        if ($songIds === []) return [];
+
+        $marks = implode(',', array_fill(0, count($songIds), '?'));
+        $stmt = $this->pdo()->prepare(
+            "SELECT id,kind,status,progress,updated_at
+             FROM analysis_jobs
+             WHERE song_id IN ($marks)
+               AND status IN ('queued','running','cancelling')
+             ORDER BY id"
+        );
+        $stmt->execute($songIds);
+        return $stmt->fetchAll();
     }
 
     public function exportData(): array

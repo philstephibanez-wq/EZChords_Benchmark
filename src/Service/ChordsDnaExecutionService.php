@@ -24,14 +24,16 @@ final class ChordsDnaExecutionService
             throw new \RuntimeException('chords_execution_request_missing');
         }
 
-        $stmt = $this->db->pdo()->prepare(
-            "SELECT input_path
-             FROM benchmark_runs
-             WHERE song_id=? AND input_path<>''
-             ORDER BY id DESC LIMIT 1"
-        );
+        $stmt = $this->db->pdo()->prepare("SELECT source_path FROM songs WHERE id=?");
         $stmt->execute([(int)$run['song_id']]);
         $source = $stmt->fetchColumn();
+        if (!is_string($source) || $source === '' || !is_file($source)) {
+            $stmt = $this->db->pdo()->prepare(
+                "SELECT input_path FROM benchmark_runs WHERE song_id=? AND input_path<>'' ORDER BY id DESC LIMIT 1"
+            );
+            $stmt->execute([(int)$run['song_id']]);
+            $source = $stmt->fetchColumn();
+        }
         if (!is_string($source) || $source === '' || !is_file($source)) {
             throw new \RuntimeException('song_master_source_missing');
         }

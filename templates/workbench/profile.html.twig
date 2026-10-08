@@ -1,0 +1,49 @@
+{% extends 'base.html.twig' %}
+{% block title %}PROFILE · EZStudio_lab{% endblock %}
+{% block body %}
+<div class="card hero"><div><h1>PROFILE</h1><div class="meta">Caractéristiques globales du master avant STEMS.</div></div></div>
+{% include 'workbench/_song_selector.html.twig' %}
+
+{% if selected_song %}
+<div class="card">
+<div class="hero">
+<div><h2>{{ selected_song.title }}{% if selected_song.artist %} — {{ selected_song.artist }}{% endif %}</h2><div class="meta">PROFILE ne lance jamais STEMS automatiquement.</div></div>
+<form method="post" action="{{ path('profile_analyze') }}"><input type="hidden" name="song" value="{{ selected_song.id }}"><button type="submit">Analyser le profil</button></form>
+</div>
+</div>
+
+{% if profile_runs %}
+<div class="card"><form method="get" action="{{ path('workbench_profile') }}" class="row"><input type="hidden" name="song" value="{{ selected_song.id }}"><label>Run PROFILE<select name="run" onchange="this.form.submit()">{% for r in profile_runs %}<option value="{{ r.id }}" {{ selected_profile_run and r.id == selected_profile_run.id ? 'selected' : '' }}>{{ r.public_id }} · {{ r.state }} · {{ r.created_at }}</option>{% endfor %}</select></label></form></div>
+{% endif %}
+
+{% if selected_profile_run %}
+
+  {% if selected_profile_run.state in ['queued','running'] %}
+    {% set profile_percent = profile_job and profile_job.progress is defined ? profile_job.progress : (selected_profile_run.labels.progress ?? 0) %}
+    <div class="card">
+      <h2>Progression PROFILE</h2>
+      <div class="meta" style="margin-bottom:5px">{{ profile_percent }}%</div>
+      <progress value="{{ profile_percent }}" max="100" style="width:100%;height:18px">{{ profile_percent }}%</progress>
+    </div>
+  {% endif %}
+
+{% set p = selected_profile_run.metrics %}
+{% set t = selected_profile_run.diagnostics.tagging ?? {} %}
+<div class="card"><h2>Caractéristiques</h2><div class="kv">
+<div>État</div><div><span class="badge {{ selected_profile_run.state == 'done' ? 'ok' : (selected_profile_run.state == 'error' ? 'warn' : '') }}">{{ selected_profile_run.state }}</span></div>
+<div>Tempo</div><div>{% if p.tempo.bpm is defined %}{{ p.tempo.bpm|number_format(2) }} BPM{% else %}—{% endif %}</div>
+<div>Signature</div><div>{% if p.time_signature.label is defined and p.time_signature.label %}{{ p.time_signature.label }} · {{ (p.time_signature.confidence * 100)|number_format(0) }}%{% elseif p.time_signature.suggested_label is defined and p.time_signature.suggested_label %}Indéterminée · suggestion {{ p.time_signature.suggested_label }} · {{ (p.time_signature.confidence * 100)|number_format(0) }}%{% else %}Indéterminée{% endif %}</div>
+<div>Tonalité</div><div>{% if p.key.label is defined and p.key.label %}{{ p.key.label }} · {{ (p.key.confidence * 100)|number_format(0) }}%{% else %}—{% endif %}</div>
+<div>Durée</div><div>{% if p.duration_seconds is defined %}{{ p.duration_seconds|number_format(1) }} s{% else %}—{% endif %}</div>
+</div></div>
+
+<div class="card"><div class="meta">Moteur sémantique : {{ t.backend ?? 'indisponible' }}{% if t.model is defined %} · {{ t.model }}{% endif %}. Les scores CLAP sont relatifs à la taxonomie comparée, pas des probabilités calibrées.</div></div>
+<div class="card"><h2>Style / genre</h2>{% if t.available ?? false %}<table><thead><tr><th>Tag</th><th>Score</th></tr></thead><tbody>{% for x in t.genre ?? [] %}<tr><td>{{ x.label }}</td><td>{{ (x.score*100)|number_format(1) }}%</td></tr>{% endfor %}</tbody></table>{% else %}<p class="meta">Classifieur MTG/Essentia non disponible. Aucun style n'est inventé.</p>{% endif %}</div>
+<div class="card"><h2>Instrumentation probable</h2>{% if t.available ?? false %}<table><thead><tr><th>Instrument</th><th>Score</th></tr></thead><tbody>{% for x in t.instrumentation ?? [] %}<tr><td>{{ x.label }}</td><td>{{ (x.score*100)|number_format(1) }}%</td></tr>{% endfor %}</tbody></table>{% else %}<p class="meta">Classifieur instrument non disponible.</p>{% endif %}</div>
+<div class="card"><h2>Voix</h2>{% if t.available ?? false %}<table><thead><tr><th>Caractéristique</th><th>Score</th></tr></thead><tbody>{% for x in t.voice ?? [] %}<tr><td>{{ x.label }}</td><td>{{ (x.score*100)|number_format(1) }}%</td></tr>{% endfor %}</tbody></table>{% else %}<p class="meta">Classifieur vocal non disponible.</p>{% endif %}</div>
+<div class="card"><h2>Ambiance / mood</h2>{% if t.available ?? false %}<table><thead><tr><th>Tag</th><th>Score</th></tr></thead><tbody>{% for x in t.mood ?? [] %}<tr><td>{{ x.label }}</td><td>{{ (x.score*100)|number_format(1) }}%</td></tr>{% endfor %}</tbody></table>{% else %}<p class="meta">Classifieur mood non disponible.</p>{% endif %}</div>
+<div class="card"><a class="button secondary" href="{{ path('dna_run',{id:selected_profile_run.id}) }}">ADN PROFILE</a> <a class="button" href="{{ path('workbench_stems',{song:selected_song.id}) }}">Ouvrir STEMS</a> <span class="meta">Navigation uniquement.</span></div>
+{% if selected_profile_run.state in ['queued','running'] %}<script>setTimeout(()=>location.reload(),2500);</script>{% endif %}
+{% endif %}
+{% endif %}
+{% endblock %}

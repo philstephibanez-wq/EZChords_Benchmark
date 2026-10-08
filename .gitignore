@@ -13,3 +13,5 @@ __pycache__/
 public/benchmark-audio/
 README_V7N*.md
 scripts/preflight-v7n*.ps1
+
+data/

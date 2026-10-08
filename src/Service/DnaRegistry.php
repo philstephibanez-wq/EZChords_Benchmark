@@ -15,7 +15,7 @@ CREATE TABLE IF NOT EXISTS scientific_runs (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     public_id TEXT NOT NULL UNIQUE,
     song_id INTEGER NOT NULL,
-    item TEXT NOT NULL CHECK(item IN ('stems','chords','lyrics')),
+    item TEXT NOT NULL CHECK(item IN ('profile','stems','chords','lyrics')),
     state TEXT NOT NULL DEFAULT 'created',
     engine_name TEXT NOT NULL DEFAULT '',
     engine_version TEXT NOT NULL DEFAULT '',
@@ -95,7 +95,7 @@ SQL;
     ): array {
         $this->ensureSchema();
 
-        if (!in_array($item, ['stems','chords','lyrics'], true)) {
+        if (!in_array($item, ['profile','stems','chords','lyrics'], true)) {
             throw new \InvalidArgumentException('invalid_item');
         }
 

@@ -80,9 +80,12 @@ pre.log{background:#111820;color:#d9e0e7;padding:12px;overflow:auto;max-height:4
    (run is defined and run and run.song_id is defined ? run.song_id : app.request.query.get('song')))
 %}
 <nav class="main-nav" aria-label="Pipeline">
-  <a href="{{ path('workbench_import', current_song_id ? {song:current_song_id} : {}) }}"
-     class="{{ route_name == 'workbench_import' ? 'active' : '' }}"
-     {% if route_name == 'workbench_import' %}aria-current="page"{% endif %}>Import</a>
+  <a href="{{ path('workbench_home') }}"
+     class="{{ route_name == 'workbench_home' ? 'active' : '' }}"
+     {% if route_name == 'workbench_home' %}aria-current="page"{% endif %}>Catalogue</a>
+  <a href="{{ path('workbench_profile', current_song_id ? {song:current_song_id} : {}) }}"
+     class="{{ route_name == 'workbench_profile' ? 'active' : '' }}"
+     {% if route_name == 'workbench_profile' %}aria-current="page"{% endif %}>Profile</a>
   <a href="{{ path('workbench_stems', current_song_id ? {song:current_song_id} : {}) }}"
      class="{{ route_name == 'workbench_stems' ? 'active' : '' }}"
      {% if route_name == 'workbench_stems' %}aria-current="page"{% endif %}>Stems</a>

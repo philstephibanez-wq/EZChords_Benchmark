@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Any
 
 PROTOCOL = "ezscore.analysis-job.v2"
-ALLOWED_KINDS = {"benchmark", "stems", "chords_scientific"}
+ALLOWED_KINDS = {"benchmark", "profile", "stems", "chords_scientific"}
 
 
 def _resolved(path: Path) -> Path:
@@ -90,6 +90,24 @@ def main() -> int:
         raise RuntimeError(f"progress_outside_lab_runtime:{progress_file}")
 
     env = _common_env(runtime_root)
+
+    if kind == "profile":
+        runner = project_root / "python" / "ezstudio" / "pipeline" / "profile" / "runner.py"
+        if not runner.is_file():
+            raise RuntimeError(f"profile_runner_missing:{runner}")
+        audio_hash = _required_string(request, "audio_hash")
+        output_path = Path(_required_string(request, "output_path"))
+        if not _is_under(output_path, runtime_root):
+            raise RuntimeError(f"profile_output_outside_lab_runtime:{output_path}")
+        command = [
+            sys.executable, str(runner),
+            "--source", str(source),
+            "--audio-hash", audio_hash,
+            "--output-path", str(output_path),
+            "--progress-file", str(progress_file),
+        ]
+        completed = subprocess.run(command, cwd=str(project_root), env=env, check=False)
+        return int(completed.returncode)
 
     if kind == "stems":
         runner = project_root / "python" / "ezstudio" / "pipeline" / "stems" / "runner.py"
@@ -177,4 +195,20 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    # R3B10D_MONGO_TERMINAL_EVENT
+    from mongo_science import record_terminal_event
+
+    try:
+        _rc = int(main())
+    except BaseException as _exc:
+        record_terminal_event(
+            returncode=1,
+            error=f"{type(_exc).__name__}:{_exc}",
+        )
+        raise
+    else:
+        record_terminal_event(
+            returncode=_rc,
+            error=None if _rc == 0 else f"analysis_returncode={_rc}",
+        )
+        raise SystemExit(_rc)

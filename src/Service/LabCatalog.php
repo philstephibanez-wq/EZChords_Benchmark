@@ -140,13 +140,25 @@ final class LabCatalog
 
     public function sourcePath(array $song): ?string
     {
-        foreach ($song['runs'] ?? [] as $run) {
-            $path = trim((string)($run['input_path'] ?? ''));
-            if ($path !== '' && is_file($path)) {
-                return $path;
+        $ids = $song['song_ids'] ?? [(int)$song['id']];
+        if ($ids !== []) {
+            $placeholders = implode(',', array_fill(0, count($ids), '?'));
+            $stmt = $this->db->pdo()->prepare(
+                "SELECT source_path FROM songs WHERE id IN ($placeholders) ORDER BY id DESC"
+            );
+            foreach ($ids as $i => $id) {
+                $stmt->bindValue($i + 1, (int)$id, \PDO::PARAM_INT);
+            }
+            $stmt->execute();
+            foreach ($stmt->fetchAll() as $row) {
+                $path = trim((string)($row['source_path'] ?? ''));
+                if ($path !== '' && is_file($path)) return $path;
             }
         }
-
+        foreach ($song['runs'] ?? [] as $run) {
+            $path = trim((string)($run['input_path'] ?? ''));
+            if ($path !== '' && is_file($path)) return $path;
+        }
         return null;
     }
 

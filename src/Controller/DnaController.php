@@ -58,7 +58,7 @@ final class DnaController extends AbstractController
         ]);
     }
 
-    #[Route('/dna/compare/{item<stems|chords|lyrics>}', name: 'dna_compare', methods: ['GET'])]
+    #[Route('/dna/compare/{item<profile|stems|chords|lyrics>}', name: 'dna_compare', methods: ['GET'])]
     public function compare(string $item, DnaRegistry $dna): Response
     {
         return $this->render('dna/compare.html.twig', [
