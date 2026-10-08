@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Any
 
 PROTOCOL = "ezscore.analysis-job.v2"
-ALLOWED_KINDS = {"benchmark", "chords_scientific"}
+ALLOWED_KINDS = {"benchmark", "stems", "chords_scientific"}
 
 
 def _resolved(path: Path) -> Path:
@@ -31,6 +31,17 @@ def _required_string(mapping: dict[str, Any], key: str) -> str:
     return value
 
 
+def _common_env(runtime_root: Path) -> dict[str, str]:
+    env = os.environ.copy()
+    env.setdefault("EZSTUDIO_RUNTIME_ROOT", str(runtime_root))
+    env.setdefault("BS_ROFORMER_MODELS_PATH", r"H:\EZScoreModels\bs-roformer")
+    env.setdefault("MELBAND_ROFORMER_MODELS_PATH", r"H:\EZScoreModels\melband-roformer")
+    env.setdefault("EZSTUDIO_STEM_DEVICE", "cuda:0")
+    env["PYTHONUTF8"] = "1"
+    env["PYTHONIOENCODING"] = "utf-8"
+    return env
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--job-file", required=True)
@@ -47,6 +58,7 @@ def main() -> int:
         raise RuntimeError("job_target_must_be_lab")
     if str(os.getenv("EZS_TARGET", "") or "").strip().lower() != "lab":
         raise RuntimeError("EZS_TARGET_must_be_lab")
+
     kind = str(raw.get("kind") or "").strip().lower()
     if kind not in ALLOWED_KINDS:
         raise RuntimeError(f"unsupported_job_kind:{raw.get('kind')}")
@@ -66,6 +78,48 @@ def main() -> int:
 
     source = Path(_required_string(paths, "source"))
     progress_file = Path(_required_string(paths, "progress_file"))
+    if not source.is_file():
+        raise RuntimeError(f"source_missing:{source}")
+
+    runtime_root = Path(
+        str(os.getenv("EZSTUDIO_RUNTIME_ROOT", r"H:\temp\EZStudio_lab"))
+    )
+    if not _is_under(source, project_root):
+        raise RuntimeError(f"source_outside_lab_root:{source}")
+    if not _is_under(progress_file, runtime_root):
+        raise RuntimeError(f"progress_outside_lab_runtime:{progress_file}")
+
+    env = _common_env(runtime_root)
+
+    if kind == "stems":
+        runner = project_root / "python" / "ezstudio" / "pipeline" / "stems" / "runner.py"
+        if not runner.is_file():
+            raise RuntimeError(f"stems_runner_missing:{runner}")
+
+        audio_hash = _required_string(request, "audio_hash")
+        storage_root = Path(_required_string(request, "storage_root"))
+        if not _is_under(storage_root, runtime_root):
+            raise RuntimeError(f"stems_storage_outside_lab_runtime:{storage_root}")
+
+        command = [
+            sys.executable,
+            str(runner),
+            "--source", str(source),
+            "--audio-hash", audio_hash,
+            "--storage-root", str(storage_root),
+            "--progress-file", str(progress_file),
+        ]
+        if bool(request.get("force", False)):
+            command.append("--force")
+
+        completed = subprocess.run(
+            command,
+            cwd=str(project_root),
+            env=env,
+            check=False,
+        )
+        return int(completed.returncode)
+
     database = Path(_required_string(request, "database"))
     deps = Path(_required_string(request, "deps"))
     run_id = int(request.get("run_id") or 0)
@@ -76,18 +130,8 @@ def main() -> int:
 
     if run_id <= 0:
         raise RuntimeError("invalid_run_id")
-    if not source.is_file():
-        raise RuntimeError(f"source_missing:{source}")
-
-    runtime_root = Path(
-        str(os.getenv("EZSTUDIO_RUNTIME_ROOT", r"H:\temp\EZStudio_lab"))
-    )
-    if not _is_under(source, project_root):
-        raise RuntimeError(f"source_outside_lab_root:{source}")
     if not _is_under(database, project_root):
         raise RuntimeError(f"database_outside_lab_root:{database}")
-    if not _is_under(progress_file, runtime_root):
-        raise RuntimeError(f"progress_outside_lab_runtime:{progress_file}")
     if not _is_under(deps, runtime_root):
         raise RuntimeError(f"deps_outside_lab_runtime:{deps}")
     if kind == "chords_scientific":
@@ -118,17 +162,10 @@ def main() -> int:
     if kind == "chords_scientific":
         command += ["--selection-request", str(selection_request)]
 
-    env = os.environ.copy()
-    env.setdefault("EZSTUDIO_RUNTIME_ROOT", str(runtime_root))
     env.setdefault("EZSTUDIO_DEP_ROOT", str(deps))
     env.setdefault("EZSTUDIO_STEMS_CACHE_ROOT", str(runtime_root / "stems"))
     env.setdefault("EZSTUDIO_OBSERVABILITY_ROOT", str(runtime_root / "observability"))
     env.setdefault("EZSTUDIO_EXPORT_ROOT", str(runtime_root / "exports"))
-    env.setdefault("BS_ROFORMER_MODELS_PATH", r"H:\EZScoreModels\bs-roformer")
-    env.setdefault("MELBAND_ROFORMER_MODELS_PATH", r"H:\EZScoreModels\melband-roformer")
-    env.setdefault("EZSTUDIO_STEM_DEVICE", "cuda:0")
-    env["PYTHONUTF8"] = "1"
-    env["PYTHONIOENCODING"] = "utf-8"
 
     completed = subprocess.run(
         command,

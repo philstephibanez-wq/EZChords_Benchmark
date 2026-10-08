@@ -7,6 +7,7 @@ namespace App\Controller;
 use App\Service\Database;
 use App\Service\ChordsDnaExecutionService;
 use App\Service\LabAnalysisTokenGuard;
+use App\Service\StemsDnaExecutionService;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\Request;
@@ -20,8 +21,8 @@ final class AnalysisDesktopController extends AbstractController
         private readonly LabAnalysisTokenGuard $guard,
         private readonly Database $db,
         private readonly ChordsDnaExecutionService $chordsDna,
-    ) {
-    }
+        private readonly StemsDnaExecutionService $stemsDna,
+    ) {}
 
     #[Route('/hello', name: 'lab_internal_analysis_hello', methods: ['POST'])]
     public function hello(Request $request): JsonResponse
@@ -67,7 +68,6 @@ final class AnalysisDesktopController extends AbstractController
         if ($job === null) {
             return new Response('', Response::HTTP_NO_CONTENT);
         }
-
         return $this->json($this->db->analysisJobContext((int)$job['id']));
     }
 
@@ -79,7 +79,6 @@ final class AnalysisDesktopController extends AbstractController
         if ($job === null) {
             return $this->json(['error' => 'job_not_found'], 404);
         }
-
         return $this->json($this->db->analysisJobContext($id));
     }
 
@@ -96,10 +95,11 @@ final class AnalysisDesktopController extends AbstractController
         if ($value === false) {
             return $this->json(['error' => 'progress_must_be_0_100'], 422);
         }
-
         if (!$this->db->updateAnalysisJobProgress($id, (int)$value)) {
             return $this->json(['error' => 'job_not_running'], 409);
         }
+
+        $this->stemsDna->progressFromJob($id, (int)$value);
         $this->chordsDna->progressFromJob($id, (int)$value);
 
         return $this->json([
@@ -115,6 +115,7 @@ final class AnalysisDesktopController extends AbstractController
         $this->guard->assertAuthorized($request);
         try {
             $this->db->completeAnalysisJob($id);
+            $this->stemsDna->completeFromJob($id);
             $this->chordsDna->completeFromJob($id);
         } catch (\RuntimeException $e) {
             return $this->json(['error' => $e->getMessage()], 409);
@@ -133,7 +134,9 @@ final class AnalysisDesktopController extends AbstractController
         $this->guard->assertAuthorized($request);
         $payload = $request->toArray();
         $error = trim((string)($payload['error'] ?? 'orchestrator_job_failed'));
+
         $this->db->failAnalysisJob($id, $error);
+        $this->stemsDna->failFromJob($id, $error);
         $this->chordsDna->failFromJob($id, $error);
 
         return $this->json([

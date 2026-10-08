@@ -120,7 +120,10 @@ CREATE TABLE IF NOT EXISTS run_logs (
 
 CREATE TABLE IF NOT EXISTS analysis_jobs (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    run_id INTEGER NOT NULL,
+    run_id INTEGER,
+    scientific_run_id INTEGER,
+    song_id INTEGER NOT NULL,
+    source_path TEXT NOT NULL,
     kind TEXT NOT NULL,
     status TEXT NOT NULL,
     progress INTEGER NOT NULL DEFAULT 0,
@@ -129,7 +132,8 @@ CREATE TABLE IF NOT EXISTS analysis_jobs (
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL,
     UNIQUE(run_id, kind),
-    FOREIGN KEY(run_id) REFERENCES benchmark_runs(id) ON DELETE CASCADE
+    FOREIGN KEY(run_id) REFERENCES benchmark_runs(id) ON DELETE CASCADE,
+    FOREIGN KEY(song_id) REFERENCES songs(id) ON DELETE CASCADE
 );
 CREATE INDEX IF NOT EXISTS idx_analysis_jobs_status
 ON analysis_jobs(status, created_at, id);
@@ -464,10 +468,13 @@ SQL;
 
         $stmt = $this->pdo()->prepare(
             'INSERT INTO analysis_jobs(
-                run_id,kind,status,progress,request_json,error,created_at,updated_at
-             ) VALUES(?,?,?,?,?,?,?,?)
+                run_id,scientific_run_id,song_id,source_path,
+                kind,status,progress,request_json,error,created_at,updated_at
+             ) VALUES(?,?,?,?,?,?,?,?,?,?,?)
              ON CONFLICT(run_id,kind)
              DO UPDATE SET
+                song_id=excluded.song_id,
+                source_path=excluded.source_path,
                 status=excluded.status,
                 progress=excluded.progress,
                 request_json=excluded.request_json,
@@ -476,6 +483,9 @@ SQL;
         );
         $stmt->execute([
             $runId,
+            null,
+            (int)$run['song_id'],
+            $audioPath,
             'benchmark',
             'queued',
             0,
@@ -511,6 +521,60 @@ SQL;
     }
 
 
+
+    public function queueScientificStemsJob(
+        int $scientificRunId,
+        int $songId,
+        string $sourcePath,
+        string $audioHash,
+        string $storageRoot,
+        bool $force,
+        string $engineProfile,
+        ?int $parentJobId = null
+    ): int {
+        if ($scientificRunId <= 0) {
+            throw new \InvalidArgumentException('scientific_run_id_required');
+        }
+        if ($songId <= 0) {
+            throw new \InvalidArgumentException('song_id_required');
+        }
+        if (!is_file($sourcePath)) {
+            throw new \RuntimeException('stems_source_missing');
+        }
+
+        $request = [
+            'scientific_run_id' => $scientificRunId,
+            'audio_hash' => $audioHash,
+            'storage_root' => $storageRoot,
+            'force' => $force,
+            'engine_profile' => $engineProfile,
+            'parent_job_id' => $parentJobId,
+            'output_contract' => 'ezstudio.stems.v1',
+        ];
+        $now = gmdate('c');
+
+        $stmt = $this->pdo()->prepare(
+            'INSERT INTO analysis_jobs(
+                run_id,scientific_run_id,song_id,source_path,
+                kind,status,progress,request_json,error,created_at,updated_at
+             ) VALUES(NULL,?,?,?,?,?,?,?,?,?,?)'
+        );
+        $stmt->execute([
+            $scientificRunId,
+            $songId,
+            $sourcePath,
+            'stems',
+            'queued',
+            0,
+            json_encode($request, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
+            null,
+            $now,
+            $now,
+        ]);
+
+        return (int)$this->pdo()->lastInsertId();
+    }
+
     public function queueScientificChordsJob(
         int $benchmarkRunId,
         int $scientificRunId,
@@ -543,11 +607,15 @@ SQL;
 
         $stmt = $this->pdo()->prepare(
             'INSERT INTO analysis_jobs(
-                run_id,kind,status,progress,request_json,error,created_at,updated_at
-             ) VALUES(?,?,?,?,?,?,?,?)'
+                run_id,scientific_run_id,song_id,source_path,
+                kind,status,progress,request_json,error,created_at,updated_at
+             ) VALUES(?,?,?,?,?,?,?,?,?,?,?)'
         );
         $stmt->execute([
             $benchmarkRunId,
+            $scientificRunId,
+            (int)$run['song_id'],
+            (string)$run['input_path'],
             'chords_scientific',
             'queued',
             0,
@@ -582,10 +650,9 @@ SQL;
     {
         $stmt = $this->pdo()->prepare(
             "SELECT j.id,j.kind,j.status,j.progress,j.run_id,
-                    r.song_id,s.title,s.artist
+                    j.scientific_run_id,j.song_id,s.title,s.artist
              FROM analysis_jobs j
-             JOIN benchmark_runs r ON r.id=j.run_id
-             JOIN songs s ON s.id=r.song_id
+             JOIN songs s ON s.id=j.song_id
              WHERE j.status='queued'
              ORDER BY j.created_at ASC,j.id ASC
              LIMIT ?"
@@ -610,14 +677,27 @@ SQL;
         return $rows;
     }
 
+    public function analysisJobsForSongKind(int $songId, string $kind): array
+    {
+        $stmt = $this->pdo()->prepare(
+            'SELECT j.*,s.title,s.artist,s.audio_sha256
+             FROM analysis_jobs j
+             JOIN songs s ON s.id=j.song_id
+             WHERE j.song_id=? AND j.kind=?
+             ORDER BY j.id DESC'
+        );
+        $stmt->execute([$songId, $kind]);
+        return $stmt->fetchAll();
+    }
+
     public function analysisJob(int $id): ?array
     {
         $stmt = $this->pdo()->prepare(
-            'SELECT j.*,r.song_id,r.input_path,r.requested_signature,
+            'SELECT j.*,r.requested_signature,
                     s.title,s.artist,s.audio_sha256
              FROM analysis_jobs j
-             JOIN benchmark_runs r ON r.id=j.run_id
-             JOIN songs s ON s.id=r.song_id
+             LEFT JOIN benchmark_runs r ON r.id=j.run_id
+             JOIN songs s ON s.id=j.song_id
              WHERE j.id=?'
         );
         $stmt->execute([$id]);
@@ -654,11 +734,13 @@ SQL;
                 return null;
             }
 
-            $pdo->prepare(
-                "UPDATE benchmark_runs
-                 SET status='running',progress=1,updated_at=?,error=NULL
-                 WHERE id=?"
-            )->execute([$now, (int)$row['run_id']]);
+            if ($row['run_id'] !== null) {
+                $pdo->prepare(
+                    "UPDATE benchmark_runs
+                     SET status='running',progress=1,updated_at=?,error=NULL
+                     WHERE id=?"
+                )->execute([$now, (int)$row['run_id']]);
+            }
 
             $pdo->commit();
             return $this->analysisJob((int)$row['id']);
@@ -699,7 +781,7 @@ SQL;
             'priority' => 50,
             'song_id' => (int)$job['song_id'],
             'paths' => [
-                'source' => (string)$job['input_path'],
+                'source' => (string)$job['source_path'],
                 'progress_file' => $progressFile,
             ],
             'request' => $request,
@@ -725,9 +807,11 @@ SQL;
         $this->pdo()->prepare(
             "UPDATE analysis_jobs SET progress=?,updated_at=? WHERE id=?"
         )->execute([$progress, $now, $id]);
-        $this->pdo()->prepare(
-            "UPDATE benchmark_runs SET progress=?,updated_at=? WHERE id=?"
-        )->execute([$progress, $now, (int)$job['run_id']]);
+        if ($job['run_id'] !== null) {
+            $this->pdo()->prepare(
+                "UPDATE benchmark_runs SET progress=?,updated_at=? WHERE id=?"
+            )->execute([$progress, $now, (int)$job['run_id']]);
+        }
         return true;
     }
 
@@ -741,9 +825,11 @@ SQL;
             throw new \RuntimeException('job_not_running');
         }
 
-        $run = $this->run((int)$job['run_id']);
-        if ($run === null || (string)$run['status'] !== 'done') {
-            throw new \RuntimeException('benchmark_run_not_done');
+        if ((string)$job['kind'] !== 'stems') {
+            $run = $this->run((int)$job['run_id']);
+            if ($run === null || (string)$run['status'] !== 'done') {
+                throw new \RuntimeException('benchmark_run_not_done');
+            }
         }
 
         $this->pdo()->prepare(
@@ -773,13 +859,15 @@ SQL;
              WHERE id=?"
         )->execute([$message, $now, $id]);
 
-        $run = $this->run((int)$job['run_id']);
-        if ($run !== null && (string)$run['status'] !== 'done') {
-            $this->pdo()->prepare(
-                "UPDATE benchmark_runs
-                 SET status='error',error=?,updated_at=?
-                 WHERE id=?"
-            )->execute([$message, $now, (int)$job['run_id']]);
+        if ($job['run_id'] !== null) {
+            $run = $this->run((int)$job['run_id']);
+            if ($run !== null && (string)$run['status'] !== 'done') {
+                $this->pdo()->prepare(
+                    "UPDATE benchmark_runs
+                     SET status='error',error=?,updated_at=?
+                     WHERE id=?"
+                )->execute([$message, $now, (int)$job['run_id']]);
+            }
         }
     }
 
