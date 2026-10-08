@@ -16,6 +16,11 @@ if (-not (Test-Path $router)) { throw "ROUTER_MISSING: $router" }
 $env:APP_ENV = "dev"
 $env:APP_DEBUG = "1"
 $env:EZSTUDIO_PYTHON = $python
+$env:AI_MODELS_ROOT = "H:\AIModels"
+$env:BS_ROFORMER_MODELS_PATH = "H:\AIModels\audio\separation\bs-roformer"
+$env:MELBAND_ROFORMER_MODELS_PATH = "H:\AIModels\audio\separation\melband-roformer"
+$env:EZSTUDIO_PROFILE_MODELS = "H:\AIModels\audio\profile"
+$env:EZSTUDIO_BEAT_THIS_CHECKPOINT = "H:\AIModels\audio\rhythm\beat-this\beat_this-final0.ckpt"
 $env:EZSTUDIO_RUNTIME_ROOT = "H:\temp\EZStudio_lab"
 $env:EZSTUDIO_DEP_ROOT = "H:\temp\EZStudio_lab\deps"
 $env:EZSTUDIO_STEMS_CACHE_ROOT = "H:\temp\EZStudio_lab\stems"
@@ -24,6 +29,7 @@ $env:EZSTUDIO_EXPORT_ROOT = "H:\temp\EZStudio_lab\exports"
 $env:KEEP_UPLOADS = "1"
 
 Write-Host "EZStudio_lab"
+Write-Host "MODELS=$env:AI_MODELS_ROOT"
 Write-Host "RUNTIME=$env:EZSTUDIO_RUNTIME_ROOT"
 Write-Host "DOCROOT=$public"
 

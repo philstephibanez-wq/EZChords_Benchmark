@@ -33,9 +33,31 @@ def _required_string(mapping: dict[str, Any], key: str) -> str:
 
 def _common_env(runtime_root: Path) -> dict[str, str]:
     env = os.environ.copy()
+    models_root = Path(env.get("AI_MODELS_ROOT") or r"H:\AIModels")
+    env.setdefault("AI_MODELS_ROOT", str(models_root))
+    env.setdefault(
+        "BS_ROFORMER_MODELS_PATH",
+        str(models_root / "audio" / "separation" / "bs-roformer"),
+    )
+    env.setdefault(
+        "MELBAND_ROFORMER_MODELS_PATH",
+        str(models_root / "audio" / "separation" / "melband-roformer"),
+    )
+    env.setdefault(
+        "EZSTUDIO_PROFILE_MODELS",
+        str(models_root / "audio" / "profile"),
+    )
+    env.setdefault(
+        "EZSTUDIO_BEAT_THIS_CHECKPOINT",
+        str(
+            models_root
+            / "audio"
+            / "rhythm"
+            / "beat-this"
+            / "beat_this-final0.ckpt"
+        ),
+    )
     env.setdefault("EZSTUDIO_RUNTIME_ROOT", str(runtime_root))
-    env.setdefault("BS_ROFORMER_MODELS_PATH", r"H:\EZScoreModels\bs-roformer")
-    env.setdefault("MELBAND_ROFORMER_MODELS_PATH", r"H:\EZScoreModels\melband-roformer")
     env.setdefault("EZSTUDIO_STEM_DEVICE", "cuda:0")
     env["PYTHONUTF8"] = "1"
     env["PYTHONIOENCODING"] = "utf-8"
