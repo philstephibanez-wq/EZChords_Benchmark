@@ -54,21 +54,51 @@ pre.log{background:#111820;color:#d9e0e7;padding:12px;overflow:auto;max-height:4
 @media(max-width:1050px){.pipeline{grid-template-columns:repeat(2,1fr)}.diagnostics-grid{grid-template-columns:1fr}}
 @media(max-width:650px){.pipeline{grid-template-columns:1fr}.header-inner{align-items:flex-start;flex-direction:column;gap:10px}}
 {% block styles %}{% endblock %}
+
+/* EZSTUDIO_NAV_ACTIVE_R3A3_CSS */
+.main-nav a.active,
+.main-nav a[aria-current="page"]{
+  background:#f5f6f8;
+  color:#17191d;
+  border-color:#f5f6f8;
+  font-weight:700;
+  box-shadow:0 0 0 1px rgba(255,255,255,.12) inset;
+}
+.main-nav a.active:hover,
+.main-nav a[aria-current="page"]:hover{
+  background:#fff;
+}
 </style>
 </head>
 <body>
 <header>
 <div class="header-inner">
-  <a class="brand" href="{{ path('lab_index') }}">EZStudio_lab <small>Audio Analysis Laboratory</small></a>
-  <nav class="main-nav" aria-label="Pipeline">
-    <a href="{{ path('lab_index') }}#import">Import</a>
-    <a href="{{ path('lab_index') }}#stems">Stems</a>
-    <a href="{{ path('lab_index') }}#chords">Chords</a>
-    <a href="{{ path('lab_index') }}#lyrics">Lyrics</a>
-    <a href="{{ path('lab_index') }}#runs">Runs</a>
-  </nav>
+  <a class="brand" href="{{ path('workbench_home') }}">EZStudio_lab <small>Audio Analysis Laboratory</small></a>
+  {% set route_name = app.request.attributes.get('_route') %}
+{% set current_song_id =
+  (selected_song is defined and selected_song ? selected_song.id :
+   (run is defined and run and run.song_id is defined ? run.song_id : app.request.query.get('song')))
+%}
+<nav class="main-nav" aria-label="Pipeline">
+  <a href="{{ path('workbench_import', current_song_id ? {song:current_song_id} : {}) }}"
+     class="{{ route_name == 'workbench_import' ? 'active' : '' }}"
+     {% if route_name == 'workbench_import' %}aria-current="page"{% endif %}>Import</a>
+  <a href="{{ path('workbench_stems', current_song_id ? {song:current_song_id} : {}) }}"
+     class="{{ route_name == 'workbench_stems' ? 'active' : '' }}"
+     {% if route_name == 'workbench_stems' %}aria-current="page"{% endif %}>Stems</a>
+  <a href="{{ path('lab_chords_experiment', current_song_id ? {song:current_song_id} : {}) }}"
+     class="{{ route_name in ['lab_chords_experiment','bench_view'] ? 'active' : '' }}"
+     {% if route_name in ['lab_chords_experiment','bench_view'] %}aria-current="page"{% endif %}>Chords</a>
+  <a href="{{ path('workbench_lyrics', current_song_id ? {song:current_song_id} : {}) }}"
+     class="{{ route_name == 'workbench_lyrics' ? 'active' : '' }}"
+     {% if route_name == 'workbench_lyrics' %}aria-current="page"{% endif %}>Lyrics</a>
+  <a href="{{ path('workbench_runs', current_song_id ? {song:current_song_id} : {}) }}"
+     class="{{ route_name in ['workbench_runs','lab_run'] ? 'active' : '' }}"
+     {% if route_name in ['workbench_runs','lab_run'] %}aria-current="page"{% endif %}>Runs</a>
+</nav>
 </div>
 </header>
 <div class="wrap">{% block body %}{% endblock %}</div>
+
 </body>
 </html>

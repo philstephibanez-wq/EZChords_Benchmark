@@ -14,31 +14,9 @@ final class BenchmarkLauncher
 
     public function launch(int $runId, string $audioPath, string $signature): void
     {
-        $projectDir = realpath($this->projectDir) ?: $this->projectDir;
-        $worker = $projectDir.DIRECTORY_SEPARATOR.'python'.DIRECTORY_SEPARATOR.'worker.py';
-
-        if (!is_file($this->pythonExecutable)) {
-            throw new \RuntimeException('Python introuvable: '.$this->pythonExecutable);
-        }
-        if (!is_file($worker)) {
-            throw new \RuntimeException('Worker introuvable: '.$worker);
-        }
-
-        $args = [
-            '--db', $this->database->path(),
-            '--run-id', (string)$runId,
-            '--audio', $audioPath,
-            '--signature', $signature,
-            '--deps', $this->dependencyRoot,
-            '--keep-upload', $this->keepUploads ? '1' : '0',
-        ];
-
-        if (PHP_OS_FAMILY === 'Windows') {
-            $this->launchDetachedWindows($runId, $worker, $args);
-            return;
-        }
-
-        $this->launchDetachedPosix($runId, $worker, $args);
+        // R2: the permanent EZS_orchestrator service is the only worker.
+        // EZStudio_lab only persists a target-owned queued job here.
+        $this->database->queueAnalysisJob($runId, $audioPath, $signature);
     }
 
     /**

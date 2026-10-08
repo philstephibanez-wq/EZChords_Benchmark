@@ -1,0 +1,22 @@
+{% extends 'base.html.twig' %}
+{% block title %}STEMS · EZStudio_lab{% endblock %}
+{% block body %}
+<div class="card hero"><div><h1>STEMS</h1><div class="meta">Workbench STEMS de la chanson sélectionnée.</div></div></div>
+{% include 'workbench/_song_selector.html.twig' %}
+{% if selected_song %}
+<div class="item-tabs">
+  <a href="#result">Résultats</a><a href="#diagnostics">Diagnostics</a><a href="#comparison">Comparaisons</a><a href="#logs">Logs</a><a href="#artifacts">Artefacts</a>
+</div>
+<section class="card" id="result">
+<h2>{{ selected_song.title }}{% if selected_song.artist %} — {{ selected_song.artist }}{% endif %}</h2>
+<p class="meta">Cette page consomme la source déjà importée. Aucun upload, titre, artiste, queue ou orchestrator n'est exposé ici.</p>
+{% if latest_run %}
+<p>Dernier run scientifique : <a href="{{ path('lab_run',{id:latest_run.id}) }}">#{{ latest_run.id }}</a></p>
+{% endif %}
+</section>
+<section class="card" id="diagnostics"><h2>Diagnostics</h2><p class="meta">Les diagnostics STEMS restent attachés au run scientifique.</p></section>
+<section class="card" id="comparison"><h2>Comparaisons</h2><p class="meta">Comparaison multi-runs/moteurs STEMS.</p></section>
+<section class="card" id="logs"><h2>Logs</h2><p class="meta">Logs STEMS du run.</p></section>
+<section class="card" id="artifacts"><h2>Artefacts</h2><p class="meta">WAV, manifestes, métriques et diagnostics.</p></section>
+{% endif %}
+{% endblock %}

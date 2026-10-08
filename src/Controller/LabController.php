@@ -5,39 +5,65 @@ namespace App\Controller;
 use App\Service\Database;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\BinaryFileResponse;
+use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\Routing\Attribute\Route;
 
 final class LabController extends AbstractController
 {
     #[Route('/', name: 'lab_index', methods: ['GET'])]
-    public function index(Database $db): Response
+    public function index(Request $request, Database $db): Response
     {
-        $runs = [];
-        foreach ($db->allRuns() as $row) {
-            $result = !empty($row['result_json'])
-                ? json_decode((string)$row['result_json'], true)
-                : null;
+        $songs = $db->allSongs();
 
-            $stems = is_array($result)
-                ? (($result['no_chord_benchmark']['stems'] ?? null))
-                : null;
+        $requestedSongId = filter_var(
+            $request->query->get('song'),
+            FILTER_VALIDATE_INT,
+            ['options' => ['min_range' => 1]],
+        );
 
-            $runs[] = [
-                'row' => $row,
-                'stems_ready' => is_array($stems) && !empty($stems['available']),
-                'chords_ready' => (string)($row['status'] ?? '') === 'done',
-                'no_chord_ready' => is_array($result)
-                    && !empty($result['no_chord_benchmark']['active_variant']),
-                'lyrics_ready' => false,
-                'engine_version' => is_array($result)
-                    ? ($result['engine_version'] ?? $row['engine_version'])
-                    : $row['engine_version'],
-            ];
+        $selectedSong = null;
+        if ($requestedSongId !== false && $requestedSongId !== null) {
+            $selectedSong = $db->song((int)$requestedSongId);
+        }
+        if ($selectedSong === null && $songs !== []) {
+            $selectedSong = $db->song((int)$songs[0]['id']);
+        }
+
+        $workbenchRuns = [];
+        $latestRun = null;
+
+        if ($selectedSong !== null) {
+            $latestRun = $db->latestRunForSong((int)$selectedSong['id']);
+
+            foreach ($db->runsForSong((int)$selectedSong['id']) as $row) {
+                $result = !empty($row['result_json'])
+                    ? json_decode((string)$row['result_json'], true)
+                    : null;
+
+                $stems = is_array($result)
+                    ? ($result['no_chord_benchmark']['stems'] ?? null)
+                    : null;
+
+                $workbenchRuns[] = [
+                    'row' => $row,
+                    'stems_ready' => is_array($stems) && !empty($stems['available']),
+                    'chords_ready' => (string)($row['status'] ?? '') === 'done',
+                    'no_chord_ready' => is_array($result)
+                        && !empty($result['no_chord_benchmark']['active_variant']),
+                    'lyrics_ready' => false,
+                    'engine_version' => is_array($result)
+                        ? ($result['engine_version'] ?? $row['engine_version'])
+                        : $row['engine_version'],
+                ];
+            }
         }
 
         return $this->render('lab/index.html.twig', [
-            'runs' => $runs,
+            'songs' => $songs,
+            'selected_song' => $selectedSong,
+            'latest_run' => $latestRun,
+            'runs' => $workbenchRuns,
             'scores' => $db->globalScores(),
         ]);
     }

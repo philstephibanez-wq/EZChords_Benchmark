@@ -396,6 +396,54 @@ def make_instrumental_mix(stems: dict, work: Path, sr=22050) -> Path:
     return target
 
 
+def make_selected_mix(selected: list[dict], work: Path, filename: str, sr=22050) -> Path:
+    if not selected:
+        raise RuntimeError("selected_stems_empty")
+
+    parts = []
+    min_len = None
+    for item in selected:
+        path = Path(str(item.get("path") or ""))
+        if not path.is_file():
+            raise RuntimeError(f"selected_stem_missing:{path}")
+        expected = str(item.get("sha256") or "").strip().lower()
+        if expected:
+            actual = sha256_file(path).lower()
+            if actual != expected:
+                raise RuntimeError(
+                    f"selected_stem_hash_mismatch:{item.get('artifact_id')}"
+                )
+        y, loaded_sr = librosa.load(path, sr=sr, mono=True)
+        if loaded_sr != sr:
+            raise RuntimeError("selected_stem_sample_rate_unexpected")
+        parts.append(y)
+        min_len = len(y) if min_len is None else min(min_len, len(y))
+
+    if not parts or not min_len:
+        raise RuntimeError("selected_stems_unusable")
+
+    mix = np.zeros(min_len, dtype=np.float32)
+    for part in parts:
+        mix += part[:min_len]
+    mix /= max(1, len(parts))
+
+    target = work / filename
+    write_pcm16_wav(target, mix, sr)
+    return target
+
+
+def _selected_by_input_role(experiment_inputs: dict | None, role: str) -> list[dict]:
+    if not isinstance(experiment_inputs, dict):
+        return []
+    rows = experiment_inputs.get("inputs")
+    if not isinstance(rows, list):
+        return []
+    return [
+        row for row in rows
+        if isinstance(row, dict) and str(row.get("input_role") or "") == role
+    ]
+
+
 def recognize(chord_recognition, audio_path: Path, dictionary: str):
     return normalize_segments(chord_recognition(audio_path=str(audio_path), chord_dict_name=dictionary))
 
@@ -412,7 +460,7 @@ def n_diag(name, segs, beats):
     }
 
 
-def analyze(audio: Path, signature_request: str, deps: Path, work: Path, progress, log):
+def analyze(audio: Path, signature_request: str, deps: Path, work: Path, progress, log, experiment_inputs=None):
     if not torch.cuda.is_available():
         raise RuntimeError("CUDA obligatoire : aucun fallback CPU")
     ff = shutil.which("ffmpeg")
@@ -504,8 +552,36 @@ def analyze(audio: Path, signature_request: str, deps: Path, work: Path, progres
 
     progress(58)
     log("INFO", f"phases {phase_hist}; unanimité={convergence['unanimous']}")
-    log("INFO", "accords master lv-chordia submission")
-    submission_segs = recognize(chord_recognition, audio, "submission")
+
+    selected_chord_inputs = _selected_by_input_role(
+        experiment_inputs, "chord_input"
+    )
+    selected_no_chord_inputs = _selected_by_input_role(
+        experiment_inputs, "no_chord_evidence"
+    )
+
+    chord_source = audio
+    analysis_source = "master_audio"
+    if selected_chord_inputs:
+        chord_source = make_selected_mix(
+            selected_chord_inputs,
+            work,
+            "selected_chord_inputs.wav",
+            sr=sr,
+        )
+        analysis_source = "selected_stems"
+        log(
+            "INFO",
+            "accords lv-chordia submission sur stems sélectionnés: "
+            + ",".join(
+                str(x.get("stem_role") or "?")
+                for x in selected_chord_inputs
+            )
+        )
+    else:
+        log("INFO", "accords master lv-chordia submission")
+
+    submission_segs = recognize(chord_recognition, chord_source, "submission")
     if not submission_segs:
         raise RuntimeError("lv-chordia submission n’a retourné aucun segment")
 
@@ -529,90 +605,207 @@ def analyze(audio: Path, signature_request: str, deps: Path, work: Path, progres
 
     progress(74)
     stems_info = {"available": False}
-    try:
-        stems_info = ensure_ezstudio_stems(audio, work, log)
-        if stems_info.get("available"):
-            mix = make_instrumental_mix(stems_info["stems"], work, sr=sr)
-            inst_segs = recognize(chord_recognition, mix, "ismir2017")
-            benchmark_variants.append(n_diag("C_instrumental_stems_ismir2017", inst_segs, beats))
 
-            stem_names = ("bass", "guitar", "piano", "other")
-            stem_labels_by_name = {}
-            stem_masks_by_name = {}
+    if selected_no_chord_inputs:
+        stem_labels_by_name = {}
+        stem_masks_by_name = {}
+        selected_stems_map = {}
 
-            for stem_name in stem_names:
-                stem_segs = recognize(
-                    chord_recognition,
-                    Path(stems_info["stems"][stem_name]),
-                    "ismir2017",
+        for item in selected_no_chord_inputs:
+            stem_name = str(
+                item.get("stem_role")
+                or item.get("artifact_id")
+                or "stem"
+            )
+            stem_path = Path(str(item.get("path") or ""))
+            expected = str(item.get("sha256") or "").strip().lower()
+            if not stem_path.is_file():
+                raise RuntimeError(
+                    f"selected_no_chord_stem_missing:{stem_path}"
                 )
-                stem_diag = n_diag(f"D_{stem_name}_ismir2017", stem_segs, beats)
-                benchmark_variants.append(stem_diag)
+            if expected and sha256_file(stem_path).lower() != expected:
+                raise RuntimeError(
+                    f"selected_no_chord_hash_mismatch:{item.get('artifact_id')}"
+                )
 
-                labels = beat_labels(stem_segs, beats)
-                stem_labels_by_name[stem_name] = labels
-                stem_masks_by_name[stem_name] = np.asarray(stem_diag["mask"], dtype=bool)
+            stem_segs = recognize(
+                chord_recognition,
+                stem_path,
+                "ismir2017",
+            )
+            stem_diag = n_diag(
+                f"D_selected_{stem_name}_ismir2017",
+                stem_segs,
+                beats,
+            )
+            benchmark_variants.append(stem_diag)
+            stem_labels_by_name[stem_name] = beat_labels(stem_segs, beats)
+            stem_masks_by_name[stem_name] = np.asarray(
+                stem_diag["mask"], dtype=bool
+            )
+            selected_stems_map[stem_name] = str(stem_path)
 
-            # V9 active N policy: POSITIVE harmonic support.
-            #
-            # A silent/absent stem does not vote against the harmony.
-            # The current chord is kept whenever at least one accompaniment
-            # stem independently reports a harmonic label other than N.
-            # N is emitted only when NONE of bass/guitar/piano/other reports
-            # harmonic support on the beat.
-            if len(stem_masks_by_name) == len(stem_names):
-                stem_n_matrix = np.vstack([
-                    stem_masks_by_name[name]
+        if stem_masks_by_name:
+            stem_names = tuple(stem_masks_by_name.keys())
+            stem_n_matrix = np.vstack([
+                stem_masks_by_name[name]
+                for name in stem_names
+            ])
+            support_count = (~stem_n_matrix).sum(axis=0)
+            active_mask = support_count == 0
+
+            support_beats = []
+            for i in range(len(active_mask)):
+                labels = {
+                    name: stem_labels_by_name[name][i]
                     for name in stem_names
-                ])
-                support_matrix = ~stem_n_matrix
-                support_count = support_matrix.sum(axis=0)
-                active_mask = support_count == 0
-
-                support_beats = []
-                for i in range(len(active_mask)):
-                    labels = {
-                        name: stem_labels_by_name[name][i]
-                        for name in stem_names
-                    }
-                    supporting = [
-                        name
-                        for name in stem_names
-                        if labels[name] != NO_CHORD
-                    ]
-                    support_beats.append({
-                        "beat": int(i),
-                        "support_count": int(support_count[i]),
-                        "supporting_stems": supporting,
-                        "labels": labels,
-                        "is_no_chord": bool(active_mask[i]),
-                    })
-
-                positive_support_diag = {
-                    "name": "E_positive_harmonic_support",
-                    "no_chord_beats": int(active_mask.sum()),
-                    "total_beats": int(len(active_mask)),
-                    "ratio": float(active_mask.mean()) if len(active_mask) else 0.0,
-                    "indices": [int(i) for i in np.flatnonzero(active_mask)],
-                    "mask": [bool(x) for x in active_mask],
-                    "rule": "N only if no bass/guitar/piano/other stem reports a non-N label",
-                    "sources": list(stem_names),
-                    "beat_support": support_beats,
                 }
-                benchmark_variants.append(positive_support_diag)
-                log(
-                    "INFO",
-                    f'no-chord actif E_positive_harmonic_support = '
-                    f'{positive_support_diag["no_chord_beats"]}/'
-                    f'{positive_support_diag["total_beats"]}'
+                supporting = [
+                    name
+                    for name in stem_names
+                    if labels[name] != NO_CHORD
+                ]
+                support_beats.append({
+                    "beat": int(i),
+                    "support_count": int(support_count[i]),
+                    "supporting_stems": supporting,
+                    "labels": labels,
+                    "is_no_chord": bool(active_mask[i]),
+                })
+
+            positive_support_diag = {
+                "name": "E_positive_harmonic_support_selected",
+                "no_chord_beats": int(active_mask.sum()),
+                "total_beats": int(len(active_mask)),
+                "ratio": (
+                    float(active_mask.mean()) if len(active_mask) else 0.0
+                ),
+                "indices": [
+                    int(i) for i in np.flatnonzero(active_mask)
+                ],
+                "mask": [bool(x) for x in active_mask],
+                "rule": (
+                    "N only if none of the explicitly selected "
+                    "NO-CHORD evidence stems reports a non-N label"
+                ),
+                "sources": list(stem_names),
+                "beat_support": support_beats,
+            }
+            benchmark_variants.append(positive_support_diag)
+            stems_info = {
+                "available": True,
+                "source": "scientific_run_selected_artifacts",
+                "generated": False,
+                "stems": selected_stems_map,
+                "inputs": selected_no_chord_inputs,
+            }
+            log(
+                "INFO",
+                f'no-chord actif '
+                f'E_positive_harmonic_support_selected = '
+                f'{positive_support_diag["no_chord_beats"]}/'
+                f'{positive_support_diag["total_beats"]}'
+            )
+    else:
+        try:
+            stems_info = ensure_ezstudio_stems(audio, work, log)
+            if stems_info.get("available"):
+                mix = make_instrumental_mix(
+                    stems_info["stems"], work, sr=sr
                 )
-    except Exception as exc:
-        log("WARN", f"benchmark stems indisponible: {type(exc).__name__}: {exc}")
-        stems_info = {
-            "available": False,
-            "reason": f"{type(exc).__name__}: {exc}",
-            "ezstudio_autonomous": True,
-        }
+                inst_segs = recognize(
+                    chord_recognition, mix, "ismir2017"
+                )
+                benchmark_variants.append(
+                    n_diag(
+                        "C_instrumental_stems_ismir2017",
+                        inst_segs,
+                        beats,
+                    )
+                )
+
+                stem_names = ("bass", "guitar", "piano", "other")
+                stem_labels_by_name = {}
+                stem_masks_by_name = {}
+
+                for stem_name in stem_names:
+                    stem_segs = recognize(
+                        chord_recognition,
+                        Path(stems_info["stems"][stem_name]),
+                        "ismir2017",
+                    )
+                    stem_diag = n_diag(
+                        f"D_{stem_name}_ismir2017",
+                        stem_segs,
+                        beats,
+                    )
+                    benchmark_variants.append(stem_diag)
+                    stem_labels_by_name[stem_name] = beat_labels(
+                        stem_segs, beats
+                    )
+                    stem_masks_by_name[stem_name] = np.asarray(
+                        stem_diag["mask"], dtype=bool
+                    )
+
+                if len(stem_masks_by_name) == len(stem_names):
+                    stem_n_matrix = np.vstack([
+                        stem_masks_by_name[name]
+                        for name in stem_names
+                    ])
+                    support_count = (~stem_n_matrix).sum(axis=0)
+                    active_mask = support_count == 0
+
+                    support_beats = []
+                    for i in range(len(active_mask)):
+                        labels = {
+                            name: stem_labels_by_name[name][i]
+                            for name in stem_names
+                        }
+                        supporting = [
+                            name
+                            for name in stem_names
+                            if labels[name] != NO_CHORD
+                        ]
+                        support_beats.append({
+                            "beat": int(i),
+                            "support_count": int(support_count[i]),
+                            "supporting_stems": supporting,
+                            "labels": labels,
+                            "is_no_chord": bool(active_mask[i]),
+                        })
+
+                    positive_support_diag = {
+                        "name": "E_positive_harmonic_support",
+                        "no_chord_beats": int(active_mask.sum()),
+                        "total_beats": int(len(active_mask)),
+                        "ratio": (
+                            float(active_mask.mean())
+                            if len(active_mask) else 0.0
+                        ),
+                        "indices": [
+                            int(i)
+                            for i in np.flatnonzero(active_mask)
+                        ],
+                        "mask": [bool(x) for x in active_mask],
+                        "rule": (
+                            "N only if no bass/guitar/piano/other stem "
+                            "reports a non-N label"
+                        ),
+                        "sources": list(stem_names),
+                        "beat_support": support_beats,
+                    }
+                    benchmark_variants.append(positive_support_diag)
+        except Exception as exc:
+            log(
+                "WARN",
+                f"benchmark stems indisponible: "
+                f"{type(exc).__name__}: {exc}",
+            )
+            stems_info = {
+                "available": False,
+                "reason": f"{type(exc).__name__}: {exc}",
+                "ezstudio_autonomous": True,
+            }
 
     # Evidence-only consensus: count how many available variants say N.
     valid_masks = [np.asarray(v["mask"], dtype=bool) for v in benchmark_variants if isinstance(v, dict) and "mask" in v]
@@ -651,7 +844,7 @@ def analyze(audio: Path, signature_request: str, deps: Path, work: Path, progres
 
     return {
         "engine_version": ENGINE_VERSION,
-        "analysis_source": "master_audio",
+        "analysis_source": analysis_source,
         "tempo": tempo,
         "signature": signature,
         "meter": meter,
@@ -666,8 +859,17 @@ def analyze(audio: Path, signature_request: str, deps: Path, work: Path, progres
             "chord_engine": "lv-chordia",
             "chord_dictionary": "submission",
             "no_chord_dictionary": "ismir2017",
-            "active_no_chord_policy": "positive_harmonic_support_any_stem",
+            "active_no_chord_policy": (
+                "positive_harmonic_support_selected_stems"
+                if selected_no_chord_inputs
+                else "positive_harmonic_support_any_stem"
+            ),
             "stems_role": "active_no_chord_decision",
+            "scientific_selection": (
+                experiment_inputs
+                if isinstance(experiment_inputs, dict)
+                else None
+            ),
             "ezstudio_autonomous": True,
         },
         "algorithms": alg,
@@ -682,7 +884,11 @@ def analyze(audio: Path, signature_request: str, deps: Path, work: Path, progres
                 "metric_algorithms_modified": False,
                 "ezscore_runtime_dependency": False,
             },
-            "active_variant": "E_positive_harmonic_support",
+            "active_variant": (
+                "E_positive_harmonic_support_selected"
+                if selected_no_chord_inputs
+                else "E_positive_harmonic_support"
+            ),
             "variants": benchmark_variants,
             "evidence_only": evidence,
             "stems": stems_info,

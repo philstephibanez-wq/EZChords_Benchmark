@@ -1,0 +1,53 @@
+{% extends 'base.html.twig' %}
+{% block title %}EZStudio_lab{% endblock %}
+{% block body %}
+<div class="card hero">
+  <div>
+    <h1>Chansons analysées</h1>
+    <div class="meta">Catalogue du laboratoire et état du pipeline par chanson.</div>
+  </div>
+</div>
+
+<div class="card">
+<table>
+<thead>
+<tr>
+  <th>Chanson</th>
+  <th>STEMS</th>
+  <th>CHORDS</th>
+  <th>LYRICS</th>
+  <th>Runs</th>
+  <th>Dernier run</th>
+  <th></th>
+</tr>
+</thead>
+<tbody>
+{% for song in songs %}
+<tr>
+  <td>
+    <strong>{{ song.title }}</strong>
+    {% if song.artist %}<div class="meta">{{ song.artist }}</div>{% endif %}
+    <div class="meta">{{ song.source_filename }}</div>
+  </td>
+  <td><span class="badge {{ song.stems_ready ? 'ok' : '' }}">{{ song.stems_ready ? 'Prêt' : '—' }}</span></td>
+  <td><span class="badge {{ song.chords_ready ? 'ok' : '' }}">{{ song.chords_ready ? 'Prêt' : '—' }}</span></td>
+  <td><span class="badge {{ song.lyrics_ready ? 'ok' : '' }}">{{ song.lyrics_ready ? 'Prêt' : '—' }}</span></td>
+  <td>{{ song.run_count }}</td>
+  <td>{{ song.latest_run_id ? '#' ~ song.latest_run_id : '—' }}</td>
+  <td style="white-space:nowrap">
+    <a class="button secondary" href="{{ path('workbench_stems',{song:song.id}) }}">STEMS</a>
+    {% if song.latest_chords_run_id %}
+      <a class="button secondary" href="{{ path('bench_view',{id:song.latest_chords_run_id}) }}">CHORDS</a>
+    {% endif %}
+    {% if song.latest_run_id %}
+      <a class="button secondary" href="{{ path('lab_run',{id:song.latest_run_id}) }}">RUN</a>
+    {% endif %}
+  </td>
+</tr>
+{% else %}
+<tr><td colspan="7">Aucune chanson analysée.</td></tr>
+{% endfor %}
+</tbody>
+</table>
+</div>
+{% endblock %}

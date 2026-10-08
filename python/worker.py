@@ -20,7 +20,23 @@ def main():
     ap.add_argument("--signature", required=True)
     ap.add_argument("--deps", required=True)
     ap.add_argument("--keep-upload", choices=["0", "1"], default="0")
+    ap.add_argument("--progress-file", default="")
+    ap.add_argument("--selection-request", default="")
     a = ap.parse_args()
+
+    progress_file = Path(a.progress_file).resolve() if a.progress_file else None
+    last_progress = 0
+
+    def write_progress_file(percent: int, status: str = "running", error: str | None = None):
+        if progress_file is None:
+            return
+        progress_file.parent.mkdir(parents=True, exist_ok=True)
+        payload = {"percent": int(percent), "status": status}
+        if error:
+            payload["error"] = str(error)
+        tmp = progress_file.with_suffix(progress_file.suffix + ".tmp")
+        tmp.write_text(json.dumps(payload, ensure_ascii=False) + "\n", encoding="utf-8")
+        os.replace(tmp, progress_file)
 
     db = sqlite3.connect(a.db, timeout=60)
     db.execute("PRAGMA journal_mode=WAL")
@@ -36,12 +52,15 @@ def main():
         db.commit()
 
     def progress(p):
+        nonlocal last_progress
+        last_progress = max(0, min(100, int(p)))
         db.execute(
             "UPDATE benchmark_runs "
             "SET progress=?,updated_at=datetime('now') WHERE id=?",
-            (int(p), a.run_id),
+            (last_progress, a.run_id),
         )
         db.commit()
+        write_progress_file(last_progress)
 
     dep_root = Path(a.deps)
     os.environ["TORCH_HOME"] = str(dep_root.parent / "torch_cache")
@@ -49,6 +68,14 @@ def main():
     audio = Path(a.audio)
     work = dep_root.parent / "work" / f"run-{a.run_id}"
     project_dir = Path(__file__).resolve().parents[1]
+
+    experiment_inputs = None
+    if a.selection_request:
+        selection_path = Path(a.selection_request).resolve()
+        payload = json.loads(selection_path.read_text(encoding="utf-8"))
+        if not isinstance(payload, dict) or payload.get("schema") != "ezstudio.chords.selection.v1":
+            raise RuntimeError("invalid_chords_selection_request")
+        experiment_inputs = payload
 
     try:
         db.execute(
@@ -67,6 +94,7 @@ def main():
             work,
             progress,
             log,
+            experiment_inputs=experiment_inputs,
         )
 
         # V10 observability is intentionally outside engine.py:
@@ -111,6 +139,8 @@ def main():
             ),
         )
         db.commit()
+        progress(100)
+        write_progress_file(100, "completed")
         log("INFO", "analyse terminée")
 
         if a.keep_upload == "0":
@@ -132,6 +162,7 @@ def main():
             (f"{type(e).__name__}: {e}", a.run_id),
         )
         db.commit()
+        write_progress_file(last_progress, "error", f"{type(e).__name__}: {e}")
         return 1
     finally:
         db.close()
