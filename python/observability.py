@@ -19,8 +19,6 @@ import numpy as np
 OBSERVABILITY_VERSION = "v10-observability-1"
 DEFAULT_ROOT = Path(r"H:\temp\EZStudio_lab\observability")
 DEFAULT_EXPORT_ROOT = Path(r"H:\temp\EZStudio_lab\exports")
-DEFAULT_MONGO_URI = "mongodb://127.0.0.1:27017"
-DEFAULT_MONGO_DB = "ezstudio_lab"
 
 TRACKS = ("master", "bass", "guitar", "piano", "other")
 
@@ -523,70 +521,6 @@ def _plot_diagnostics(
     return generated
 
 
-def _mongo_store(
-    run_id: int,
-    run_doc: dict[str, Any],
-    beat_rows: list[dict[str, Any]],
-    events: list[dict[str, Any]],
-    mongo_uri: str,
-    mongo_db: str,
-) -> dict[str, Any]:
-    try:
-        from pymongo import ASCENDING, MongoClient, UpdateOne
-    except ImportError as exc:
-        raise RuntimeError(
-            "pymongo absent. Exécuter scripts/install-observability-v10.ps1"
-        ) from exc
-
-    client = MongoClient(mongo_uri, serverSelectionTimeoutMS=3000)
-    client.admin.command("ping")
-    db = client[mongo_db]
-
-    db.runs.create_index([("run_id", ASCENDING)], unique=True)
-    db.beat_features.create_index(
-        [("run_id", ASCENDING), ("track", ASCENDING), ("beat", ASCENDING)],
-        unique=True,
-    )
-    db.events.create_index([("run_id", ASCENDING), ("type", ASCENDING), ("beat", ASCENDING)])
-
-    db.runs.replace_one({"run_id": run_id}, _jsonable(run_doc), upsert=True)
-
-    if beat_rows:
-        ops = []
-        for row in beat_rows:
-            doc = {"run_id": run_id, **_jsonable(row)}
-            ops.append(
-                UpdateOne(
-                    {
-                        "run_id": run_id,
-                        "track": doc["track"],
-                        "beat": doc["beat"],
-                    },
-                    {"$set": doc},
-                    upsert=True,
-                )
-            )
-        if ops:
-            db.beat_features.bulk_write(ops, ordered=False)
-
-    db.events.delete_many({"run_id": run_id})
-    if events:
-        db.events.insert_many(
-            [{"run_id": run_id, **_jsonable(e)} for e in events],
-            ordered=False,
-        )
-
-    collections = sorted(db.list_collection_names())
-    client.close()
-
-    return {
-        "uri": mongo_uri,
-        "database": mongo_db,
-        "collections": collections,
-        "status": "ok",
-    }
-
-
 def build_observability_bundle(
     *,
     run_id: int,
@@ -595,14 +529,10 @@ def build_observability_bundle(
     work_dir: Path,
     project_dir: Path,
     log,
-    mongo_uri: str | None = None,
-    mongo_db: str | None = None,
     observability_root: Path | None = None,
     export_root: Path | None = None,
 ) -> dict[str, Any]:
     started = time.perf_counter()
-    mongo_uri = mongo_uri or os.getenv("EZSTUDIO_MONGO_URI", DEFAULT_MONGO_URI)
-    mongo_db = mongo_db or os.getenv("EZSTUDIO_MONGO_DB", DEFAULT_MONGO_DB)
     observability_root = observability_root or Path(
         os.getenv("EZSTUDIO_OBSERVABILITY_ROOT", str(DEFAULT_ROOT))
     )
@@ -696,15 +626,6 @@ def build_observability_bundle(
         "ezstudio_autonomous": True,
     }
 
-    mongo_status = _mongo_store(
-        run_id,
-        run_doc,
-        beat_rows,
-        events,
-        mongo_uri,
-        mongo_db,
-    )
-    run_doc["mongo"] = mongo_status
     _write_json(run_dir / "run.json", run_doc)
 
     manifest = {
@@ -713,7 +634,6 @@ def build_observability_bundle(
         "run_id": int(run_id),
         "generated_at": _utc_now(),
         "engine_version": result.get("engine_version"),
-        "mongo": mongo_status,
         "source_audio_sha256": source_info["sha256"],
         "timebase": "original_audio_seconds",
         "contains_audio_binary": False,
@@ -743,7 +663,6 @@ def build_observability_bundle(
                 zf.write(p, p.relative_to(run_dir).as_posix())
 
     elapsed = time.perf_counter() - started
-    log("INFO", f"V10 observability: MongoDB OK {mongo_db}")
     log("INFO", f"V10 observability: export scientifique {zip_path}")
     log("INFO", f"V10 observability: terminé en {elapsed:.2f}s")
 
@@ -751,17 +670,14 @@ def build_observability_bundle(
         "observability_version": OBSERVABILITY_VERSION,
         "artifact_root": str(run_dir),
         "scientific_zip": str(zip_path),
-        "mongo": mongo_status,
         "duration_s": elapsed,
     }
 
 
 def self_test() -> None:
     assert OBSERVABILITY_VERSION.startswith("v10-")
-    assert DEFAULT_MONGO_URI.startswith("mongodb://127.0.0.1:")
     assert "EZScore" not in str(DEFAULT_ROOT)
     print("V10_OBSERVABILITY_SELF_TEST_OK")
-    print("V10_MONGO_LOCALHOST_CONTRACT_OK")
     print("V10_EZSTUDIO_AUTONOMY_CONTRACT_OK")
 
 

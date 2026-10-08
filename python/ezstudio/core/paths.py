@@ -19,8 +19,6 @@ class LabPaths:
     @property
     def exports(self): return self.root/"exports"
     @property
-    def mongo(self): return self.root/"mongodb"
-    @property
     def logs(self): return self.root/"logs"
     def ensure(self):
-        for p in (self.root,self.artifacts,self.runs,self.cache,self.exports,self.mongo,self.logs): p.mkdir(parents=True,exist_ok=True)
+        for p in (self.root,self.artifacts,self.runs,self.cache,self.exports,self.logs): p.mkdir(parents=True,exist_ok=True)

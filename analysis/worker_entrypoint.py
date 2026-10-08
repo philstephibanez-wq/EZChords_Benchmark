@@ -195,20 +195,4 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    # R3B10D_MONGO_TERMINAL_EVENT
-    from mongo_science import record_terminal_event
-
-    try:
-        _rc = int(main())
-    except BaseException as _exc:
-        record_terminal_event(
-            returncode=1,
-            error=f"{type(_exc).__name__}:{_exc}",
-        )
-        raise
-    else:
-        record_terminal_event(
-            returncode=_rc,
-            error=None if _rc == 0 else f"analysis_returncode={_rc}",
-        )
-        raise SystemExit(_rc)
+    raise SystemExit(main())

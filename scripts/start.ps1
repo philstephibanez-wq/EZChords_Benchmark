@@ -21,7 +21,6 @@ $env:EZSTUDIO_DEP_ROOT = "H:\temp\EZStudio_lab\deps"
 $env:EZSTUDIO_STEMS_CACHE_ROOT = "H:\temp\EZStudio_lab\stems"
 $env:EZSTUDIO_OBSERVABILITY_ROOT = "H:\temp\EZStudio_lab\observability"
 $env:EZSTUDIO_EXPORT_ROOT = "H:\temp\EZStudio_lab\exports"
-$env:EZSTUDIO_MONGO_DB = "ezstudio_lab"
 $env:KEEP_UPLOADS = "1"
 
 Write-Host "EZStudio_lab"

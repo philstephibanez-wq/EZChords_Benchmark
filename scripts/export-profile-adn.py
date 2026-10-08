@@ -2,17 +2,11 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
 import sqlite3
-import sys
 import zipfile
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
-
-
-def _mongo_dep_root() -> Path:
-    return Path(os.getenv("EZSTUDIO_MONGO_DEP_ROOT", r"H:\temp\EZStudio_lab\deps\mongo-r1"))
 
 
 def _json_default(value: Any):
@@ -51,37 +45,6 @@ def _decode_json_fields(row: dict) -> dict:
             except Exception:
                 pass
     return out
-
-
-def export_mongo(song_id: int, audio_sha256: str) -> dict[str, list[dict]]:
-    dep = _mongo_dep_root()
-    if dep.is_dir() and str(dep) not in sys.path:
-        sys.path.append(str(dep))
-
-    from pymongo import MongoClient
-
-    uri = os.getenv("EZSTUDIO_MONGO_URI", "mongodb://127.0.0.1:27017")
-    db_name = os.getenv("EZSTUDIO_MONGO_DB", "ezstudio_lab")
-    client = MongoClient(uri, serverSelectionTimeoutMS=2500)
-    client.admin.command("ping")
-    db = client[db_name]
-
-    query_parts: list[dict] = [{"song_id": song_id}]
-    if audio_sha256:
-        query_parts.append({"audio_sha256": audio_sha256})
-    query = {"$or": query_parts}
-
-    result: dict[str, list[dict]] = {}
-    try:
-        existing = set(db.list_collection_names())
-        for name in ("runs", "observations", "events"):
-            if name not in existing:
-                result[name] = []
-                continue
-            result[name] = list(db[name].find(query).sort("_id", 1))
-    finally:
-        client.close()
-    return result
 
 
 def main() -> int:
@@ -160,13 +123,6 @@ def main() -> int:
                 _decode_json_fields(row)
             )
 
-    try:
-        mongo_data = export_mongo(args.song_id, audio_sha256)
-        mongo_error = None
-    except Exception as exc:
-        mongo_data = {"runs": [], "observations": [], "events": []}
-        mongo_error = f"{type(exc).__name__}:{exc}"
-
     manifest = {
         "schema": "ezstudio.profile.feedback.v2",
         "generated_at": datetime.now(timezone.utc).isoformat(),
@@ -176,11 +132,7 @@ def main() -> int:
         "counts": {
             "scientific_runs": len(scientific_runs),
             "analysis_jobs": len(analysis_jobs),
-            "mongo_runs": len(mongo_data["runs"]),
-            "mongo_observations": len(mongo_data["observations"]),
-            "mongo_events": len(mongo_data["events"]),
         },
-        "mongo_error": mongo_error,
     }
 
     with zipfile.ZipFile(
@@ -216,19 +168,10 @@ def main() -> int:
                         f"artifacts/{_safe(public_id)}/{_safe(path.name)}",
                     )
 
-        for collection, docs in mongo_data.items():
-            z.writestr(
-                f"mongo/{collection}.json",
-                json.dumps(docs, ensure_ascii=False, indent=2, default=_json_default) + "\n",
-            )
-
-        if mongo_error:
-            z.writestr("mongo/error.txt", mongo_error + "\n")
-
         z.writestr(
             "README.txt",
             "EZStudio_lab PROFILE ADN feedback bundle v2\n"
-            "Sources: SQLite + MongoDB + JSON artifacts.\n"
+            "Sources: SQLite + JSON artifacts.\n"
             "No source audio or stems included.\n",
         )
 
