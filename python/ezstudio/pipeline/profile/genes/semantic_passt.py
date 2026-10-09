@@ -9,7 +9,7 @@ from pathlib import Path
 
 import numpy as np
 
-from pedal import PedalContext, file_sha256
+from gene import GeneContext, file_sha256
 from runtime_deps import prepare_profile_imports
 
 
@@ -35,7 +35,7 @@ def _ensure_cached_checkpoint(
     return target
 
 
-def run(context: PedalContext) -> dict:
+def run(context: GeneContext) -> dict:
     prepare_profile_imports()
 
     try:

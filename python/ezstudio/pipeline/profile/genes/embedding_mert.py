@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 from pathlib import Path
+import gc
 
 import numpy as np
 
-from pedal import PedalContext
+from gene import GeneContext
 from runtime_deps import prepare_profile_imports
 
 
@@ -25,7 +26,7 @@ def _chunks(
     return [y[int(start): int(start) + length] for start in starts]
 
 
-def _run(context: PedalContext, model_dir: Path) -> dict:
+def _run(context: GeneContext, model_dir: Path) -> dict:
     prepare_profile_imports()
     try:
         import librosa
@@ -54,11 +55,18 @@ def _run(context: PedalContext, model_dir: Path) -> dict:
         target_sr=target_sr,
     ).astype(np.float32, copy=False)
 
+    # MERT_R3B14_AUTOCAST:
+    # Keep model parameters in their native float32 form. Static conversion of
+    # the whole MERT model to float16 causes internal feature-extractor paths to
+    # create float32 tensors against fp16 convolution weights. CUDA autocast
+    # handles mixed precision operator-by-operator instead.
+    gc.collect()
+    torch.cuda.empty_cache()
+
     model = AutoModel.from_pretrained(
         str(model_dir),
         local_files_only=True,
         trust_remote_code=True,
-        torch_dtype=torch.float16,
     ).to("cuda")
     model.eval()
 
@@ -72,12 +80,15 @@ def _run(context: PedalContext, model_dir: Path) -> dict:
                 return_tensors="pt",
                 padding=True,
             )
-            model_dtype = next(model.parameters()).dtype
             input_values = inputs["input_values"].to(
                 device="cuda",
-                dtype=model_dtype,
+                dtype=torch.float32,
             )
-            outputs = model(input_values)
+            with torch.autocast(
+                device_type="cuda",
+                dtype=torch.float16,
+            ):
+                outputs = model(input_values)
             hidden = outputs.last_hidden_state
             pooled = hidden.float().mean(dim=1)[0].detach().cpu().numpy()
             hidden_size = int(pooled.size)
@@ -112,16 +123,20 @@ def _run(context: PedalContext, model_dir: Path) -> dict:
         },
         "model": {
             "path": str(model_dir),
+            "weights_dtype": str(next(model.parameters()).dtype),
+            "inference_dtype": "cuda-autocast-float16",
         },
         "device": "cuda:0",
     }
 
     del model
     del extractor
+    gc.collect()
+    torch.cuda.empty_cache()
     return result
 
 
-def run_95m(context: PedalContext) -> dict:
+def run_95m(context: GeneContext) -> dict:
     return _run(
         context,
         context.ai_models_root
@@ -132,7 +147,7 @@ def run_95m(context: PedalContext) -> dict:
     )
 
 
-def run_330m(context: PedalContext) -> dict:
+def run_330m(context: GeneContext) -> dict:
     return _run(
         context,
         context.ai_models_root

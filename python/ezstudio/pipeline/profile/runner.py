@@ -11,21 +11,24 @@ from pathlib import Path
 
 import numpy as np
 
-from pedal import PedalContext, PedalSpec
-from pedalboard import Pedalboard
-from pedals import descriptors_librosa
-from pedals import embedding_mert
-from pedals import meter_chords_shared
-from pedals import rhythm_librosa
-from pedals import semantic_clap_open_vocab
-from pedals import semantic_essentia_mtg
-from pedals import semantic_panns
-from pedals import semantic_passt
-from pedals import tonal_ks
-from pedals import tonal_madmom_key
+from gene import GeneContext, GeneSpec
+from gene_registry import GeneRegistry
+from genes import descriptors_librosa
+from genes import embedding_mert
+from genes import meter_chords_shared
+from genes import rhythm_librosa
+from genes import semantic_clap_open_vocab
+from genes import semantic_essentia_mtg
+from genes import semantic_panns
+from genes import semantic_passt
+from genes import tonal_ks
+from genes import tonal_madmom_key
 
 R3B13_PROFILE_CONSOLIDATION = True
+R3B14_PROFILE_REPAIR = True
 SCHEMA = "ezstudio.profile.v1"
+R3B15B_MADMOM_44100 = True
+R3B15_PROFILE_GENES = True
 
 
 def write_progress(path: Path, percent: int, message: str) -> None:
@@ -55,12 +58,12 @@ def sha256(path: Path) -> str:
     return h.hexdigest()
 
 
-def _pedal_by_id(
-    pedalboard_result: dict,
-    pedal_id: str,
+def _gene_by_id(
+    gene_registry_result: dict,
+    gene_id: str,
 ) -> dict | None:
-    for record in pedalboard_result.get("pedals") or []:
-        if record.get("id") == pedal_id:
+    for record in gene_registry_result.get("genes") or []:
+        if record.get("id") == gene_id:
             return record
     return None
 
@@ -73,25 +76,25 @@ def _normalized(record: dict | None) -> dict:
 
 
 def _legacy_projection(
-    pedalboard_result: dict,
+    gene_registry_result: dict,
     duration: float,
 ) -> tuple[dict, dict, list[str]]:
-    rhythm = _pedal_by_id(pedalboard_result, "rhythm.librosa-beat")
-    meter = _pedal_by_id(pedalboard_result, "meter.chords-shared-r9")
-    tonal = _pedal_by_id(
-        pedalboard_result,
+    rhythm = _gene_by_id(gene_registry_result, "rhythm.librosa-beat")
+    meter = _gene_by_id(gene_registry_result, "meter.chords-shared-r9")
+    tonal = _gene_by_id(
+        gene_registry_result,
         "tonal.krumhansl-schmuckler",
     )
-    descriptors = _pedal_by_id(
-        pedalboard_result,
+    descriptors = _gene_by_id(
+        gene_registry_result,
         "descriptors.librosa-lowlevel",
     )
-    essentia = _pedal_by_id(
-        pedalboard_result,
+    essentia = _gene_by_id(
+        gene_registry_result,
         "semantic.essentia-discogs-mtg",
     )
-    clap = _pedal_by_id(
-        pedalboard_result,
+    clap = _gene_by_id(
+        gene_registry_result,
         "semantic.clap-open-vocabulary",
     )
 
@@ -135,14 +138,14 @@ def _legacy_projection(
         }
 
     warnings: list[str] = []
-    for record in pedalboard_result.get("pedals") or []:
+    for record in gene_registry_result.get("genes") or []:
         warnings.extend(
             str(item) for item in (record.get("warnings") or [])
         )
         if record.get("status") == "error":
             error = record.get("error") or {}
             warnings.append(
-                "profile_pedal_error:"
+                "profile_gene_error:"
                 + str(record.get("id"))
                 + ":"
                 + str(error.get("type") or "")
@@ -154,11 +157,11 @@ def _legacy_projection(
 
 
 
-def _profile_view(pedalboard_result: dict) -> dict:
-    records = pedalboard_result.get("pedals") or []
-    consensus = pedalboard_result.get("consensus") or {}
+def _profile_view(gene_registry_result: dict) -> dict:
+    records = gene_registry_result.get("genes") or []
+    consensus = gene_registry_result.get("consensus") or {}
 
-    pedal_rows = []
+    gene_rows = []
     embeddings = []
     counts = {"ok": 0, "skipped": 0, "error": 0}
 
@@ -166,7 +169,7 @@ def _profile_view(pedalboard_result: dict) -> dict:
         status = str(record.get("status") or "error")
         counts[status] = counts.get(status, 0) + 1
         error = record.get("error") if isinstance(record.get("error"), dict) else {}
-        pedal_rows.append(
+        gene_rows.append(
             {
                 "id": record.get("id"),
                 "name": record.get("name"),
@@ -203,7 +206,7 @@ def _profile_view(pedalboard_result: dict) -> dict:
 
     return {
         "counts": counts,
-        "pedals": pedal_rows,
+        "genes": gene_rows,
         "tonal": consensus.get("tonal") or {},
         "audioset": {
             "method": audioset.get("method"),
@@ -226,15 +229,15 @@ def _model_roots() -> tuple[Path, Path]:
     return ai_root, profile_root
 
 
-def build_pedalboard(
+def build_gene_registry(
     ai_root: Path,
     profile_root: Path,
-) -> Pedalboard:
+) -> GeneRegistry:
     return (
-        Pedalboard()
+        GeneRegistry()
         .add(
-            PedalSpec(
-                pedal_id="rhythm.librosa-beat",
+            GeneSpec(
+                gene_id="rhythm.librosa-beat",
                 display_name="Librosa Beat Tracker",
                 family="rhythm",
                 order=10,
@@ -247,8 +250,8 @@ def build_pedalboard(
             rhythm_librosa.run,
         )
         .add(
-            PedalSpec(
-                pedal_id="meter.chords-shared-r9",
+            GeneSpec(
+                gene_id="meter.chords-shared-r9",
                 display_name="CHORDS Shared Meter R9",
                 family="meter",
                 order=20,
@@ -274,8 +277,8 @@ def build_pedalboard(
             meter_chords_shared.run,
         )
         .add(
-            PedalSpec(
-                pedal_id="tonal.krumhansl-schmuckler",
+            GeneSpec(
+                gene_id="tonal.krumhansl-schmuckler",
                 display_name="Krumhansl-Schmuckler Key",
                 family="tonal",
                 order=30,
@@ -285,8 +288,8 @@ def build_pedalboard(
             tonal_ks.run,
         )
         .add(
-            PedalSpec(
-                pedal_id="tonal.madmom-key-cnn-2017",
+            GeneSpec(
+                gene_id="tonal.madmom-key-cnn-2017",
                 display_name="Madmom Key CNN 2017 Ensemble",
                 family="tonal",
                 order=31,
@@ -304,8 +307,8 @@ def build_pedalboard(
             tonal_madmom_key.run_2017,
         )
         .add(
-            PedalSpec(
-                pedal_id="tonal.madmom-key-cnn-2018",
+            GeneSpec(
+                gene_id="tonal.madmom-key-cnn-2018",
                 display_name="Madmom Genre-Agnostic Key CNN 2018",
                 family="tonal",
                 order=32,
@@ -324,8 +327,8 @@ def build_pedalboard(
             tonal_madmom_key.run_2018,
         )
         .add(
-            PedalSpec(
-                pedal_id="descriptors.librosa-lowlevel",
+            GeneSpec(
+                gene_id="descriptors.librosa-lowlevel",
                 display_name="Librosa Low-Level Descriptors",
                 family="descriptors",
                 order=40,
@@ -335,8 +338,8 @@ def build_pedalboard(
             descriptors_librosa.run,
         )
         .add(
-            PedalSpec(
-                pedal_id="semantic.essentia-discogs-mtg",
+            GeneSpec(
+                gene_id="semantic.essentia-discogs-mtg",
                 display_name="Essentia Discogs + MTG",
                 family="semantic",
                 order=50,
@@ -347,8 +350,8 @@ def build_pedalboard(
             semantic_essentia_mtg.run,
         )
         .add(
-            PedalSpec(
-                pedal_id="semantic.clap-open-vocabulary",
+            GeneSpec(
+                gene_id="semantic.clap-open-vocabulary",
                 display_name="CLAP Open Vocabulary",
                 family="semantic",
                 order=60,
@@ -367,8 +370,8 @@ def build_pedalboard(
             semantic_clap_open_vocab.run,
         )
         .add(
-            PedalSpec(
-                pedal_id="embedding.mert-95m",
+            GeneSpec(
+                gene_id="embedding.mert-95m",
                 display_name="MERT Music Embedding 95M",
                 family="embedding",
                 order=70,
@@ -392,8 +395,8 @@ def build_pedalboard(
             embedding_mert.run_95m,
         )
         .add(
-            PedalSpec(
-                pedal_id="embedding.mert-330m",
+            GeneSpec(
+                gene_id="embedding.mert-330m",
                 display_name="MERT Music Embedding 330M",
                 family="embedding",
                 order=71,
@@ -417,8 +420,8 @@ def build_pedalboard(
             embedding_mert.run_330m,
         )
         .add(
-            PedalSpec(
-                pedal_id="semantic.panns-cnn14",
+            GeneSpec(
+                gene_id="semantic.panns-cnn14",
                 display_name="PANNs CNN14 AudioSet",
                 family="semantic",
                 order=80,
@@ -441,8 +444,8 @@ def build_pedalboard(
             semantic_panns.run,
         )
         .add(
-            PedalSpec(
-                pedal_id="semantic.passt-audioset",
+            GeneSpec(
+                gene_id="semantic.passt-audioset",
                 display_name="PaSST AudioSet Transformer",
                 family="semantic",
                 order=81,
@@ -490,7 +493,7 @@ def main() -> int:
     duration = float(librosa.get_duration(y=y, sr=sr))
     ai_root, profile_root = _model_roots()
 
-    context = PedalContext(
+    context = GeneContext(
         source=source,
         audio_sha256=args.audio_hash,
         y=np.asarray(y, dtype=np.float32),
@@ -499,8 +502,8 @@ def main() -> int:
         ai_models_root=ai_root,
     )
 
-    board = build_pedalboard(ai_root, profile_root)
-    pedalboard_result = board.run(
+    registry = build_gene_registry(ai_root, profile_root)
+    gene_registry_result = registry.run(
         context,
         progress=lambda percent, message: write_progress(
             progress,
@@ -510,10 +513,10 @@ def main() -> int:
     )
 
     characteristics, tagging, warnings = _legacy_projection(
-        pedalboard_result,
+        gene_registry_result,
         duration,
     )
-    profile_view = _profile_view(pedalboard_result)
+    profile_view = _profile_view(gene_registry_result)
 
     result = {
         "schema": SCHEMA,
@@ -522,8 +525,8 @@ def main() -> int:
         "characteristics": characteristics,
         "tagging": tagging,
         "profile_view": profile_view,
-        "pedalboard": {
-            **pedalboard_result,
+        "gene_registry": {
+            **gene_registry_result,
             "ai_models_root": str(ai_root),
             "profile_models_root": str(profile_root),
         },
@@ -543,7 +546,7 @@ def main() -> int:
                 .get("source")
                 or ""
             ),
-            "profile_architecture": "pedalboard-r3b13",
+            "profile_architecture": "genes-r3b15b",
             "profile_dependency_root": os.getenv(
                 "EZSTUDIO_PROFILE_DEP_ROOT",
                 r"H:\EZStudio_lab\var\runtime\deps\profile-r3b12",
@@ -552,7 +555,7 @@ def main() -> int:
         "automatic_next_stage": False,
     }
 
-    write_progress(progress, 96, "PROFILE: écriture ADN R3B12")
+    write_progress(progress, 96, "PROFILE: écriture ADN R3B15b")
     tmp = output.with_suffix(".tmp")
     tmp.write_text(
         json.dumps(result, ensure_ascii=False, indent=2),

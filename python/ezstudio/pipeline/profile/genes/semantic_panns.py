@@ -4,7 +4,7 @@ from pathlib import Path
 
 import numpy as np
 
-from pedal import PedalContext, file_sha256
+from gene import GeneContext, file_sha256
 from runtime_deps import prepare_profile_imports
 
 
@@ -24,7 +24,7 @@ def _chunks(
     return [y[int(start): int(start) + length] for start in starts]
 
 
-def run(context: PedalContext) -> dict:
+def run(context: GeneContext) -> dict:
     prepare_profile_imports()
     try:
         import librosa

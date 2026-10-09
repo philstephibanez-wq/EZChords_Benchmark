@@ -3,26 +3,26 @@ from __future__ import annotations
 from collections import defaultdict
 from typing import Any, Callable
 
-from pedal import PedalContext, PedalSpec, run_pedal
+from gene import GeneContext, GeneSpec, run_gene
 
 
-class Pedalboard:
+class GeneRegistry:
     def __init__(self) -> None:
         self._entries: list[
-            tuple[PedalSpec, Callable[[PedalContext], dict[str, Any]]]
+            tuple[GeneSpec, Callable[[GeneContext], dict[str, Any]]]
         ] = []
 
     def add(
         self,
-        spec: PedalSpec,
-        fn: Callable[[PedalContext], dict[str, Any]],
-    ) -> "Pedalboard":
+        spec: GeneSpec,
+        fn: Callable[[GeneContext], dict[str, Any]],
+    ) -> "GeneRegistry":
         self._entries.append((spec, fn))
         return self
 
     def run(
         self,
-        context: PedalContext,
+        context: GeneContext,
         progress: Callable[[int, str], None] | None = None,
     ) -> dict[str, Any]:
         entries = sorted(self._entries, key=lambda item: item[0].order)
@@ -33,15 +33,15 @@ class Pedalboard:
             if progress:
                 percent = 8 + int((index / total) * 84)
                 progress(percent, f"PROFILE: {spec.display_name}")
-            records.append(run_pedal(spec, context, fn))
+            records.append(run_gene(spec, context, fn))
 
         by_family: dict[str, list[dict[str, Any]]] = defaultdict(list)
         for record in records:
             by_family[str(record.get("family") or "unknown")].append(record)
 
         return {
-            "schema": "ezstudio.profile.pedalboard.v3",
-            "pedals": records,
+            "schema": "ezstudio.profile.genes.v1",
+            "genes": records,
             "families": dict(by_family),
             "consensus": build_consensus(records),
         }
@@ -96,7 +96,7 @@ def build_consensus(records: list[dict[str, Any]]) -> dict[str, Any]:
                     {
                         "label": label,
                         "score": score,
-                        "pedal": record["id"],
+                        "gene": record["id"],
                     }
                 )
 
@@ -109,7 +109,7 @@ def build_consensus(records: list[dict[str, Any]]) -> dict[str, Any]:
                 "support": len(items),
                 "sources": [
                     {
-                        "pedal": item["pedal"],
+                        "gene": item["gene"],
                         "score": round(float(item["score"]), 6),
                     }
                     for item in items
@@ -150,7 +150,7 @@ def build_consensus(records: list[dict[str, Any]]) -> dict[str, Any]:
         if isinstance(normalized, dict) and normalized.get("label"):
             labels.append(
                 {
-                    "pedal": record["id"],
+                    "gene": record["id"],
                     "label": normalized.get("label"),
                     "confidence": normalized.get("confidence"),
                 }
@@ -184,7 +184,7 @@ def build_consensus(records: list[dict[str, Any]]) -> dict[str, Any]:
             "policy": "preserve-each-representation-no-vector-fusion",
             "sources": [
                 {
-                    "pedal": record["id"],
+                    "gene": record["id"],
                     "model": (record.get("model") or {}).get("id"),
                     "normalized": record.get("normalized"),
                 }

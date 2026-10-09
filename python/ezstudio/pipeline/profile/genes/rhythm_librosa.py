@@ -2,10 +2,10 @@ from __future__ import annotations
 
 import numpy as np
 
-from pedal import PedalContext
+from gene import GeneContext
 
 
-def run(context: PedalContext) -> dict:
+def run(context: GeneContext) -> dict:
     import librosa
 
     onset_env = librosa.onset.onset_strength(y=context.y, sr=context.sr)

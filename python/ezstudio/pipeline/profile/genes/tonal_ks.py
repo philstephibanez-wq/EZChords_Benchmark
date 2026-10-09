@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import numpy as np
 
-from pedal import PedalContext
+from gene import GeneContext
 
 
 MAJOR = np.array(
@@ -57,7 +57,7 @@ def estimate_key(chroma: np.ndarray) -> dict:
     }
 
 
-def run(context: PedalContext) -> dict:
+def run(context: GeneContext) -> dict:
     import librosa
 
     chroma = librosa.feature.chroma_cqt(y=context.y, sr=context.sr)

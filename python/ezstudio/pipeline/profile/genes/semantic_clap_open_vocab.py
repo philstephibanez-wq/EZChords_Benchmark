@@ -1,10 +1,10 @@
 from __future__ import annotations
 
-from pedal import PedalContext
+from gene import GeneContext
 from semantic_clap import MODEL_NAME, clap_tags
 
 
-def run(context: PedalContext) -> dict:
+def run(context: GeneContext) -> dict:
     result, warnings = clap_tags(context.source, context.model_root)
     if not bool(result.get("available")):
         raise RuntimeError(

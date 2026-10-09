@@ -12,8 +12,8 @@ import numpy as np
 
 
 @dataclass(frozen=True)
-class PedalSpec:
-    pedal_id: str
+class GeneSpec:
+    gene_id: str
     display_name: str
     family: str
     order: int
@@ -28,7 +28,7 @@ class PedalSpec:
 
 
 @dataclass
-class PedalContext:
+class GeneContext:
     source: Path
     audio_sha256: str
     y: np.ndarray
@@ -57,14 +57,14 @@ def release_accelerator_memory() -> None:
         pass
 
 
-def run_pedal(
-    spec: PedalSpec,
-    context: PedalContext,
-    fn: Callable[[PedalContext], dict[str, Any]],
+def run_gene(
+    spec: GeneSpec,
+    context: GeneContext,
+    fn: Callable[[GeneContext], dict[str, Any]],
 ) -> dict[str, Any]:
     started = time.perf_counter()
     record: dict[str, Any] = {
-        "id": spec.pedal_id,
+        "id": spec.gene_id,
         "name": spec.display_name,
         "family": spec.family,
         "order": spec.order,

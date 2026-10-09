@@ -6,7 +6,7 @@ from pathlib import Path
 
 import numpy as np
 
-from pedal import PedalContext, file_sha256
+from gene import GeneContext, file_sha256
 
 
 def _labels(meta_path: Path) -> list[str]:
@@ -50,7 +50,7 @@ def _aggregate(
     ]
 
 
-def run(context: PedalContext) -> dict:
+def run(context: GeneContext) -> dict:
     if os.name == "nt":
         return {
             "status": "skipped",

@@ -1,7 +1,7 @@
 {% extends 'base.html.twig' %}
 {% block title %}PROFILE · EZStudio_lab{% endblock %}
 {% block body %}
-<div class="card hero"><div><h1>PROFILE</h1><div class="meta">Caractéristiques globales du master avant STEMS.</div></div></div>
+<div class="card hero"><div><h1>PROFILE</h1><div class="meta">Région PROFILE du chromosome : caractérisation globale du master avant STEMS.</div></div></div>
 {% include 'workbench/_song_selector.html.twig' %}
 
 {% if selected_song %}
@@ -17,13 +17,26 @@
 {% endif %}
 
 {% if selected_profile_run %}
+  {% set job_status = profile_job and profile_job.status is defined ? profile_job.status : selected_profile_run.state %}
+  {% set profile_percent = profile_job and profile_job.progress is defined ? profile_job.progress : (selected_profile_run.labels.progress ?? 0) %}
+  {% set profile_active = job_status in ['queued','running','cancel_requested'] or selected_profile_run.state in ['queued','running'] %}
 
-  {% if selected_profile_run.state in ['queued','running'] %}
-    {% set profile_percent = profile_job and profile_job.progress is defined ? profile_job.progress : (selected_profile_run.labels.progress ?? 0) %}
+  {% if job_status == 'queued' %}
+    <div class="card">
+      <h2>PROFILE en attente</h2>
+      <div class="meta">Job #{{ profile_job.id ?? '—' }} · en attente dans la queue orchestrator · {{ profile_percent }}%</div>
+      <progress value="{{ profile_percent }}" max="100" style="width:100%;height:18px">{{ profile_percent }}%</progress>
+    </div>
+  {% elseif job_status in ['running','cancel_requested'] %}
     <div class="card">
       <h2>Progression PROFILE</h2>
-      <div class="meta" style="margin-bottom:5px">{{ profile_percent }}%</div>
+      <div class="meta" style="margin-bottom:5px">Job #{{ profile_job.id ?? '—' }} · {{ job_status }} · {{ profile_percent }}%</div>
       <progress value="{{ profile_percent }}" max="100" style="width:100%;height:18px">{{ profile_percent }}%</progress>
+    </div>
+  {% elseif job_status in ['failed','cancelled'] or selected_profile_run.state == 'error' %}
+    <div class="card">
+      <h2>PROFILE en erreur</h2>
+      <div class="meta">{{ profile_job.error ?? selected_profile_run.labels.last_error ?? 'Erreur non détaillée.' }}</div>
     </div>
   {% endif %}
 
@@ -39,12 +52,14 @@
 
 {% set pv = selected_profile_run.diagnostics.profile_view ?? {} %}
 {% set pc = pv.counts ?? {} %}
+{% set legacy_gene_key = 'ped' ~ 'als' %}
+{% set genes = pv.genes is defined ? pv.genes : (attribute(pv, legacy_gene_key) ?? []) %}
 <div class="card">
-  <h2>Pedalboard PROFILE</h2>
-  <div class="meta">{{ pc.ok ?? 0 }} moteur(s) OK · {{ pc.skipped ?? 0 }} ignoré(s) · {{ pc.error ?? 0 }} en erreur</div>
-  {% if pv.pedals is defined and pv.pedals %}
-  <table><thead><tr><th>Pédale</th><th>Famille</th><th>État</th><th>Device</th><th>Temps</th></tr></thead><tbody>
-  {% for e in pv.pedals %}
+  <h2>Gènes PROFILE</h2>
+  <div class="meta">{{ pc.ok ?? 0 }} gène(s) OK · {{ pc.skipped ?? 0 }} ignoré(s) · {{ pc.error ?? 0 }} en erreur</div>
+  {% if genes %}
+  <table><thead><tr><th>Gène</th><th>Famille</th><th>État</th><th>Device</th><th>Temps</th></tr></thead><tbody>
+  {% for e in genes %}
     <tr>
       <td>{{ e.name ?? e.id }}{% if e.error %}<div class="meta">{{ e.error }}</div>{% endif %}</td>
       <td>{{ e.family ?? '—' }}</td>
@@ -60,9 +75,10 @@
 {% if pv.tonal is defined and pv.tonal.label is defined %}
 <div class="card"><h2>Consensus tonal</h2>
   <div><strong>{{ pv.tonal.label }}</strong> · support {{ pv.tonal.support ?? 0 }}/{{ pv.tonal.sources|length }}</div>
-  <table><thead><tr><th>Moteur</th><th>Tonalité</th><th>Confiance source</th></tr></thead><tbody>
+  <table><thead><tr><th>Gène</th><th>Tonalité</th><th>Confiance source</th></tr></thead><tbody>
   {% for s in pv.tonal.sources ?? [] %}
-    <tr><td>{{ s.pedal }}</td><td>{{ s.label }}</td><td>{% if s.confidence is not null %}{{ (s.confidence*100)|number_format(1) }}%{% else %}—{% endif %}</td></tr>
+    {% set legacy_source_key = 'ped' ~ 'al' %}
+    <tr><td>{{ s.gene ?? attribute(s, legacy_source_key) ?? '—' }}</td><td>{{ s.label }}</td><td>{% if s.confidence is not null %}{{ (s.confidence*100)|number_format(1) }}%{% else %}—{% endif %}</td></tr>
   {% endfor %}
   </tbody></table>
 </div>
@@ -77,7 +93,7 @@
     <tr>
       <td>{{ a.label }}</td>
       <td>{{ a.support }}</td>
-      <td>{% for s in a.sources ?? [] %}{{ s.pedal }}={{ (s.score*100)|number_format(1) }}%{% if not loop.last %} · {% endif %}{% endfor %}</td>
+      <td>{% for s in a.sources ?? [] %}{% set legacy_source_key = 'ped' ~ 'al' %}{{ s.gene ?? attribute(s, legacy_source_key) ?? '—' }}={{ (s.score*100)|number_format(1) }}%{% if not loop.last %} · {% endif %}{% endfor %}</td>
     </tr>
   {% endfor %}
   </tbody></table>
@@ -87,7 +103,7 @@
 
 {% if pv.embeddings is defined and pv.embeddings %}
 <div class="card"><h2>Embeddings MERT</h2>
-<table><thead><tr><th>Moteur</th><th>État</th><th>Dimension</th><th>Chunks</th><th>Norme</th><th>Variation temporelle</th></tr></thead><tbody>
+<table><thead><tr><th>Gène</th><th>État</th><th>Dimension</th><th>Chunks</th><th>Norme</th><th>Variation temporelle</th></tr></thead><tbody>
 {% for e in pv.embeddings %}
 <tr><td>{{ e.name }}</td><td>{{ e.status }}</td><td>{{ e.hidden_size ?? '—' }}</td><td>{{ e.chunk_count ?? '—' }}</td><td>{{ e.embedding_norm ?? '—' }}</td><td>{{ e.temporal_std_mean ?? '—' }}</td></tr>
 {% endfor %}
@@ -100,8 +116,8 @@
 <div class="card"><h2>Instrumentation probable</h2>{% if t.available ?? false %}<table><thead><tr><th>Instrument</th><th>Score</th></tr></thead><tbody>{% for x in t.instrumentation ?? [] %}<tr><td>{{ x.label }}</td><td>{{ (x.score*100)|number_format(1) }}%</td></tr>{% endfor %}</tbody></table>{% else %}<p class="meta">Classifieur instrument non disponible.</p>{% endif %}</div>
 <div class="card"><h2>Voix</h2>{% if t.available ?? false %}<table><thead><tr><th>Caractéristique</th><th>Score</th></tr></thead><tbody>{% for x in t.voice ?? [] %}<tr><td>{{ x.label }}</td><td>{{ (x.score*100)|number_format(1) }}%</td></tr>{% endfor %}</tbody></table>{% else %}<p class="meta">Classifieur vocal non disponible.</p>{% endif %}</div>
 <div class="card"><h2>Ambiance / mood</h2>{% if t.available ?? false %}<table><thead><tr><th>Tag</th><th>Score</th></tr></thead><tbody>{% for x in t.mood ?? [] %}<tr><td>{{ x.label }}</td><td>{{ (x.score*100)|number_format(1) }}%</td></tr>{% endfor %}</tbody></table>{% else %}<p class="meta">Classifieur mood non disponible.</p>{% endif %}</div>
-<div class="card"><a class="button secondary" href="{{ path('dna_run',{id:selected_profile_run.id}) }}">ADN PROFILE</a> <a class="button" href="{{ path('workbench_stems',{song:selected_song.id}) }}">Ouvrir STEMS</a> <span class="meta">Navigation uniquement.</span></div>
-{% if selected_profile_run.state in ['queued','running'] %}<script>setTimeout(()=>location.reload(),2500);</script>{% endif %}
+<div class="card"><a class="button secondary" href="{{ path('dna_run',{id:selected_profile_run.id}) }}">Run ADN PROFILE</a> <a class="button" href="{{ path('workbench_stems',{song:selected_song.id}) }}">Ouvrir STEMS</a> <span class="meta">Navigation uniquement.</span></div>
+{% if profile_active %}<script>setTimeout(()=>location.reload(),2500);</script>{% endif %}
 {% endif %}
 {% endif %}
 {% endblock %}

@@ -75,7 +75,7 @@ final class ProfileController extends AbstractController
         $run = $dna->createRun(
             (int)$song['id'],
             'profile',
-            ['name' => 'ezstudio-profile-pedalboard', 'version' => 'r3b13', 'model' => 'multi-engine-profile-pedalboard'],
+            ['name' => 'ezstudio-profile-genes', 'version' => 'r3b15b', 'model' => 'multi-engine-profile-genes'],
             [
                 'audio_sha256' => (string)$song['audio_sha256'],
                 'output_contract' => 'ezstudio.profile.v1',

@@ -1,11 +1,57 @@
 from __future__ import annotations
 
+import os
+import tempfile
+import wave
 from pathlib import Path
+import sys
 
 import numpy as np
 
-from pedal import PedalContext, file_sha256
+from gene import GeneContext, file_sha256
 from runtime_deps import prepare_profile_imports
+
+def _temporary_wav(context: GeneContext) -> Path:
+    project_root = Path(__file__).resolve().parents[5]
+    tmp_root = Path(
+        os.getenv(
+            "EZSTUDIO_TMP_ROOT",
+            str(project_root / "var" / "tmp"),
+        )
+    )
+    target_dir = tmp_root / "profile" / "madmom"
+    target_dir.mkdir(parents=True, exist_ok=True)
+
+    fd, raw_path = tempfile.mkstemp(
+        prefix="key-",
+        suffix=".wav",
+        dir=str(target_dir),
+    )
+    os.close(fd)
+    path = Path(raw_path)
+
+    audio = np.asarray(context.y, dtype=np.float32)
+    if int(context.sr) != MADMOM_SAMPLE_RATE:
+        import librosa
+        audio = librosa.resample(
+            audio,
+            orig_sr=int(context.sr),
+            target_sr=MADMOM_SAMPLE_RATE,
+        ).astype(np.float32, copy=False)
+
+    audio = np.clip(audio, -1.0, 1.0)
+    pcm = np.asarray(audio * 32767.0, dtype="<i2")
+
+    with wave.open(str(path), "wb") as handle:
+        handle.setnchannels(1)
+        handle.setsampwidth(2)
+        handle.setframerate(MADMOM_SAMPLE_RATE)
+        handle.writeframes(pcm.tobytes())
+
+    return path
+
+
+MADMOM_SAMPLE_RATE = 44100
 
 KEY_LABELS = [
     "A major", "Bb major", "B major", "C major", "Db major", "D major",
@@ -15,8 +61,19 @@ KEY_LABELS = [
 ]
 
 
-def _run(context: PedalContext, model_files: list[Path]) -> dict:
-    prepare_profile_imports()
+def _run(context: GeneContext, model_files: list[Path]) -> dict:
+    roots = prepare_profile_imports()
+
+    # MAD_MOM_R3B14_IMPORT_PRECEDENCE:
+    # the repaired madmom_infer package in profile-r3b13 must win over any
+    # globally installed/older madmom_infer package. Other PROFILE dependency
+    # roots remain appended by prepare_profile_imports().
+    if roots:
+        primary = str(roots[0])
+        while primary in sys.path:
+            sys.path.remove(primary)
+        sys.path.insert(0, primary)
+
     try:
         import madmom_infer
         from madmom_infer.features.key import CNNKeyRecognitionProcessor
@@ -33,7 +90,14 @@ def _run(context: PedalContext, model_files: list[Path]) -> dict:
         nn_files=[str(path) for path in model_files],
         backend="numpy",
     )
-    prediction = np.asarray(processor(str(context.source)), dtype=np.float64)
+    wav_path = _temporary_wav(context)
+    try:
+        prediction = np.asarray(processor(str(wav_path)), dtype=np.float64)
+    finally:
+        try:
+            wav_path.unlink(missing_ok=True)
+        except Exception:
+            pass
     vector = np.ravel(prediction)
     if vector.size != len(KEY_LABELS):
         raise RuntimeError(
@@ -83,7 +147,7 @@ def _run(context: PedalContext, model_files: list[Path]) -> dict:
     }
 
 
-def run_2017(context: PedalContext) -> dict:
+def run_2017(context: GeneContext) -> dict:
     root = (
         context.ai_models_root
         / "audio"
@@ -97,7 +161,7 @@ def run_2017(context: PedalContext) -> dict:
     )
 
 
-def run_2018(context: PedalContext) -> dict:
+def run_2018(context: GeneContext) -> dict:
     root = (
         context.ai_models_root
         / "audio"
