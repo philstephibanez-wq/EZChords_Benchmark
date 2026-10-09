@@ -5,11 +5,63 @@ import json
 import os
 import subprocess
 import sys
+import traceback
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
 PROTOCOL = "ezscore.analysis-job.v2"
 ALLOWED_KINDS = {"benchmark", "profile", "stems", "chords_scientific"}
+
+
+_CURRENT_LOG_PATH: Path | None = None
+_CURRENT_LAB_LOG_PATH: Path | None = None
+
+
+def _utc_now() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
+def _append_line(path: Path | None, message: str) -> None:
+    if path is None:
+        return
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("a", encoding="utf-8", newline="\n") as handle:
+        handle.write(message.rstrip("\r\n") + "\n")
+
+
+def _log_event(message: str) -> None:
+    line = f"{_utc_now()} {message}"
+    _append_line(_CURRENT_LOG_PATH, line)
+    _append_line(_CURRENT_LAB_LOG_PATH, line)
+
+
+def _run_logged(
+    command: list[str],
+    *,
+    cwd: str,
+    env: dict[str, str],
+) -> int:
+    _log_event("process_start command=" + " ".join(command))
+    proc = subprocess.Popen(
+        command,
+        cwd=cwd,
+        env=env,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        bufsize=1,
+    )
+    if proc.stdout is not None:
+        for line in proc.stdout:
+            clean = line.rstrip("\r\n")
+            print(clean, flush=True)
+            _append_line(_CURRENT_LOG_PATH, clean)
+    returncode = int(proc.wait())
+    _log_event(f"process_end returncode={returncode}")
+    return returncode
 
 
 def _resolved(path: Path) -> Path:
@@ -65,6 +117,7 @@ def _common_env(runtime_root: Path) -> dict[str, str]:
 
 
 def main() -> int:
+    global _CURRENT_LOG_PATH, _CURRENT_LAB_LOG_PATH
     parser = argparse.ArgumentParser()
     parser.add_argument("--job-file", required=True)
     args = parser.parse_args()
@@ -86,6 +139,23 @@ def main() -> int:
         raise RuntimeError(f"unsupported_job_kind:{raw.get('kind')}")
 
     project_root = Path(__file__).resolve().parents[1]
+    job_id = int(raw.get("job_id") or 0)
+    if job_id <= 0:
+        raise RuntimeError("invalid_job_id")
+    log_root = Path(
+        str(
+            os.getenv("EZSTUDIO_LOG_ROOT")
+            or (project_root / "var" / "logs")
+        )
+    )
+    _CURRENT_LOG_PATH = (
+        log_root / "jobs" / f"job-{job_id:08d}-{kind}.log"
+    )
+    _CURRENT_LAB_LOG_PATH = log_root / "lab.log"
+    _log_event(
+        f"job_start id={job_id} kind={kind} target=lab "
+        f"job_file={job_file}"
+    )
     expected_root_raw = str(os.getenv("EZS_EXPECTED_ROOT", "") or "").strip()
     if not expected_root_raw:
         raise RuntimeError("EZS_EXPECTED_ROOT_missing")
@@ -130,6 +200,7 @@ def main() -> int:
     env = _common_env(storage_root)
     env.setdefault("EZSTUDIO_STORAGE_ROOT", str(storage_root))
     env.setdefault("EZSTUDIO_TMP_ROOT", str(tmp_root))
+    env.setdefault("EZSTUDIO_LOG_ROOT", str(log_root))
     env.setdefault("EZSTUDIO_DEP_ROOT", str(runtime_deps_root))
 
     if kind == "profile":
@@ -147,8 +218,11 @@ def main() -> int:
             "--output-path", str(output_path),
             "--progress-file", str(progress_file),
         ]
-        completed = subprocess.run(command, cwd=str(project_root), env=env, check=False)
-        return int(completed.returncode)
+        return _run_logged(
+            command,
+            cwd=str(project_root),
+            env=env,
+        )
 
     if kind == "stems":
         runner = project_root / "python" / "ezstudio" / "pipeline" / "stems" / "runner.py"
@@ -171,13 +245,11 @@ def main() -> int:
         if bool(request.get("force", False)):
             command.append("--force")
 
-        completed = subprocess.run(
+        return _run_logged(
             command,
             cwd=str(project_root),
             env=env,
-            check=False,
         )
-        return int(completed.returncode)
 
     database = Path(_required_string(request, "database"))
     deps = Path(_required_string(request, "deps"))
@@ -226,14 +298,21 @@ def main() -> int:
     env.setdefault("EZSTUDIO_OBSERVABILITY_ROOT", str(tmp_root / "observability"))
     env.setdefault("EZSTUDIO_EXPORT_ROOT", str(storage_root / "exports"))
 
-    completed = subprocess.run(
+    return _run_logged(
         command,
         cwd=str(project_root),
         env=env,
-        check=False,
     )
-    return int(completed.returncode)
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    try:
+        raise SystemExit(main())
+    except Exception as exc:
+        _log_event(
+            "worker_fatal "
+            + f"{type(exc).__name__}:{exc}"
+        )
+        if _CURRENT_LOG_PATH is not None:
+            _append_line(_CURRENT_LOG_PATH, traceback.format_exc())
+        raise

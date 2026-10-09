@@ -25,14 +25,17 @@ $env:EZSTUDIO_BEAT_THIS_CHECKPOINT = "H:\AIModels\audio\rhythm\beat-this\beat_th
 $storageRoot = Join-Path $root "var\storage"
 $runtimeRoot = Join-Path $root "var\runtime"
 $tmpRoot = Join-Path $root "var\tmp"
+$logsRoot = Join-Path $root "var\logs"
 
 New-Item -ItemType Directory -Force -Path `
   $storageRoot, `
   $runtimeRoot, `
-  $tmpRoot | Out-Null
+  $tmpRoot, `
+  $logsRoot | Out-Null
 
 $env:EZSTUDIO_STORAGE_ROOT = $storageRoot
 $env:EZSTUDIO_TMP_ROOT = $tmpRoot
+$env:EZSTUDIO_LOG_ROOT = $logsRoot
 
 # Legacy compatibility only: durable outputs now resolve under STORAGE_ROOT.
 $env:EZSTUDIO_RUNTIME_ROOT = $storageRoot
@@ -56,6 +59,7 @@ Write-Host "MODELS=$env:AI_MODELS_ROOT"
 Write-Host "PROFILE_DEPS=$env:EZSTUDIO_PROFILE_DEP_ROOT"
 Write-Host "STORAGE=$env:EZSTUDIO_STORAGE_ROOT"
 Write-Host "TMP=$env:EZSTUDIO_TMP_ROOT"
+Write-Host "LOGS=$env:EZSTUDIO_LOG_ROOT"
 Write-Host "RUNTIME_DEPS=$env:EZSTUDIO_DEP_ROOT"
 Write-Host "DOCROOT=$public"
 
