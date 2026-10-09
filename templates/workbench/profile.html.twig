@@ -37,6 +37,64 @@
 <div>Durée</div><div>{% if p.duration_seconds is defined %}{{ p.duration_seconds|number_format(1) }} s{% else %}—{% endif %}</div>
 </div></div>
 
+{% set pv = selected_profile_run.diagnostics.profile_view ?? {} %}
+{% set pc = pv.counts ?? {} %}
+<div class="card">
+  <h2>Pedalboard PROFILE</h2>
+  <div class="meta">{{ pc.ok ?? 0 }} moteur(s) OK · {{ pc.skipped ?? 0 }} ignoré(s) · {{ pc.error ?? 0 }} en erreur</div>
+  {% if pv.pedals is defined and pv.pedals %}
+  <table><thead><tr><th>Pédale</th><th>Famille</th><th>État</th><th>Device</th><th>Temps</th></tr></thead><tbody>
+  {% for e in pv.pedals %}
+    <tr>
+      <td>{{ e.name ?? e.id }}{% if e.error %}<div class="meta">{{ e.error }}</div>{% endif %}</td>
+      <td>{{ e.family ?? '—' }}</td>
+      <td><span class="badge {{ e.status == 'ok' ? 'ok' : (e.status == 'error' ? 'warn' : '') }}">{{ e.status }}</span></td>
+      <td>{{ e.device ?? '—' }}</td>
+      <td>{% if e.elapsed_seconds is not null %}{{ e.elapsed_seconds|number_format(2) }} s{% else %}—{% endif %}</td>
+    </tr>
+  {% endfor %}
+  </tbody></table>
+  {% endif %}
+</div>
+
+{% if pv.tonal is defined and pv.tonal.label is defined %}
+<div class="card"><h2>Consensus tonal</h2>
+  <div><strong>{{ pv.tonal.label }}</strong> · support {{ pv.tonal.support ?? 0 }}/{{ pv.tonal.sources|length }}</div>
+  <table><thead><tr><th>Moteur</th><th>Tonalité</th><th>Confiance source</th></tr></thead><tbody>
+  {% for s in pv.tonal.sources ?? [] %}
+    <tr><td>{{ s.pedal }}</td><td>{{ s.label }}</td><td>{% if s.confidence is not null %}{{ (s.confidence*100)|number_format(1) }}%{% else %}—{% endif %}</td></tr>
+  {% endfor %}
+  </tbody></table>
+</div>
+{% endif %}
+
+{% if pv.audioset is defined and pv.audioset.agreements is defined %}
+<div class="card"><h2>Consensus AudioSet · PANNs / PaSST</h2>
+  <div class="meta">Accord de labels uniquement. Les probabilités des moteurs ne sont jamais moyennées entre elles.</div>
+  {% if pv.audioset.agreements %}
+  <table><thead><tr><th>Label</th><th>Support</th><th>Scores source</th></tr></thead><tbody>
+  {% for a in pv.audioset.agreements %}
+    <tr>
+      <td>{{ a.label }}</td>
+      <td>{{ a.support }}</td>
+      <td>{% for s in a.sources ?? [] %}{{ s.pedal }}={{ (s.score*100)|number_format(1) }}%{% if not loop.last %} · {% endif %}{% endfor %}</td>
+    </tr>
+  {% endfor %}
+  </tbody></table>
+  {% else %}<p class="meta">Aucun label commun entre moteurs.</p>{% endif %}
+</div>
+{% endif %}
+
+{% if pv.embeddings is defined and pv.embeddings %}
+<div class="card"><h2>Embeddings MERT</h2>
+<table><thead><tr><th>Moteur</th><th>État</th><th>Dimension</th><th>Chunks</th><th>Norme</th><th>Variation temporelle</th></tr></thead><tbody>
+{% for e in pv.embeddings %}
+<tr><td>{{ e.name }}</td><td>{{ e.status }}</td><td>{{ e.hidden_size ?? '—' }}</td><td>{{ e.chunk_count ?? '—' }}</td><td>{{ e.embedding_norm ?? '—' }}</td><td>{{ e.temporal_std_mean ?? '—' }}</td></tr>
+{% endfor %}
+</tbody></table>
+</div>
+{% endif %}
+
 <div class="card"><div class="meta">Moteur sémantique : {{ t.backend ?? 'indisponible' }}{% if t.model is defined %} · {{ t.model }}{% endif %}. Les scores CLAP sont relatifs à la taxonomie comparée, pas des probabilités calibrées.</div></div>
 <div class="card"><h2>Style / genre</h2>{% if t.available ?? false %}<table><thead><tr><th>Tag</th><th>Score</th></tr></thead><tbody>{% for x in t.genre ?? [] %}<tr><td>{{ x.label }}</td><td>{{ (x.score*100)|number_format(1) }}%</td></tr>{% endfor %}</tbody></table>{% else %}<p class="meta">Classifieur MTG/Essentia non disponible. Aucun style n'est inventé.</p>{% endif %}</div>
 <div class="card"><h2>Instrumentation probable</h2>{% if t.available ?? false %}<table><thead><tr><th>Instrument</th><th>Score</th></tr></thead><tbody>{% for x in t.instrumentation ?? [] %}<tr><td>{{ x.label }}</td><td>{{ (x.score*100)|number_format(1) }}%</td></tr>{% endfor %}</tbody></table>{% else %}<p class="meta">Classifieur instrument non disponible.</p>{% endif %}</div>

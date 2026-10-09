@@ -8,7 +8,9 @@ from pedal import PedalContext, PedalSpec, run_pedal
 
 class Pedalboard:
     def __init__(self) -> None:
-        self._entries: list[tuple[PedalSpec, Callable[[PedalContext], dict[str, Any]]]] = []
+        self._entries: list[
+            tuple[PedalSpec, Callable[[PedalContext], dict[str, Any]]]
+        ] = []
 
     def add(
         self,
@@ -29,7 +31,7 @@ class Pedalboard:
 
         for index, (spec, fn) in enumerate(entries):
             if progress:
-                percent = 10 + int((index / total) * 80)
+                percent = 8 + int((index / total) * 84)
                 progress(percent, f"PROFILE: {spec.display_name}")
             records.append(run_pedal(spec, context, fn))
 
@@ -38,14 +40,17 @@ class Pedalboard:
             by_family[str(record.get("family") or "unknown")].append(record)
 
         return {
-            "schema": "ezstudio.profile.pedalboard.v1",
+            "schema": "ezstudio.profile.pedalboard.v3",
             "pedals": records,
             "families": dict(by_family),
             "consensus": build_consensus(records),
         }
 
 
-def _semantic_rows(record: dict[str, Any], family: str) -> list[dict[str, Any]]:
+def _semantic_rows(
+    record: dict[str, Any],
+    family: str,
+) -> list[dict[str, Any]]:
     normalized = record.get("normalized")
     if not isinstance(normalized, dict):
         return []
@@ -55,17 +60,27 @@ def _semantic_rows(record: dict[str, Any], family: str) -> list[dict[str, Any]]:
 
 def build_consensus(records: list[dict[str, Any]]) -> dict[str, Any]:
     semantic_records = [
-        record for record in records
-        if record.get("family") == "semantic" and record.get("status") == "ok"
+        record
+        for record in records
+        if record.get("family") == "semantic"
+        and record.get("status") == "ok"
     ]
 
     semantic: dict[str, Any] = {}
-    for family in ("genre", "instrumentation", "mood", "voice"):
+    for family in (
+        "genre",
+        "instrumentation",
+        "mood",
+        "voice",
+        "audioset",
+    ):
         support: dict[str, list[dict[str, Any]]] = defaultdict(list)
         per_engine: dict[str, list[dict[str, Any]]] = {}
 
         for record in semantic_records:
             rows = _semantic_rows(record, family)
+            if not rows:
+                continue
             per_engine[str(record["id"])] = rows
             for row in rows:
                 if not isinstance(row, dict):
@@ -92,10 +107,13 @@ def build_consensus(records: list[dict[str, Any]]) -> dict[str, Any]:
             row = {
                 "label": canonical,
                 "support": len(items),
-                "pedals": [item["pedal"] for item in items],
-                "mean_source_score": round(
-                    sum(item["score"] for item in items) / len(items), 4
-                ),
+                "sources": [
+                    {
+                        "pedal": item["pedal"],
+                        "score": round(float(item["score"]), 6),
+                    }
+                    for item in items
+                ],
             }
             if len(items) >= 2:
                 agreements.append(row)
@@ -103,25 +121,28 @@ def build_consensus(records: list[dict[str, Any]]) -> dict[str, Any]:
                 divergences.append(row)
 
         agreements.sort(
-            key=lambda row: (row["support"], row["mean_source_score"]),
-            reverse=True,
+            key=lambda row: (-int(row["support"]), str(row["label"]).casefold())
         )
         divergences.sort(
-            key=lambda row: row["mean_source_score"],
-            reverse=True,
+            key=lambda row: str(row["label"]).casefold()
         )
 
-        semantic[family] = {
-            "method": "exact-label-agreement-no-cross-engine-score-calibration",
-            "agreements": agreements,
-            "divergences": divergences,
-            "per_engine": per_engine,
-        }
+        if per_engine:
+            semantic[family] = {
+                "method": (
+                    "exact-label-agreement-"
+                    "no-cross-engine-score-calibration"
+                ),
+                "agreements": agreements,
+                "divergences": divergences,
+                "per_engine": per_engine,
+            }
 
-    tonal = {}
     tonal_records = [
-        record for record in records
-        if record.get("family") == "tonal" and record.get("status") == "ok"
+        record
+        for record in records
+        if record.get("family") == "tonal"
+        and record.get("status") == "ok"
     ]
     labels = []
     for record in tonal_records:
@@ -134,6 +155,8 @@ def build_consensus(records: list[dict[str, Any]]) -> dict[str, Any]:
                     "confidence": normalized.get("confidence"),
                 }
             )
+
+    tonal: dict[str, Any] = {}
     if labels:
         counts: dict[str, int] = defaultdict(int)
         for item in labels:
@@ -144,14 +167,34 @@ def build_consensus(records: list[dict[str, Any]]) -> dict[str, Any]:
             "label": winner[0],
             "support": winner[1],
             "sources": labels,
+            "unanimous": winner[1] == len(labels),
         }
+
+    embedding_records = [
+        record
+        for record in records
+        if record.get("family") == "embedding"
+        and record.get("status") == "ok"
+    ]
 
     return {
         "semantic": semantic,
         "tonal": tonal,
+        "embedding": {
+            "policy": "preserve-each-representation-no-vector-fusion",
+            "sources": [
+                {
+                    "pedal": record["id"],
+                    "model": (record.get("model") or {}).get("id"),
+                    "normalized": record.get("normalized"),
+                }
+                for record in embedding_records
+            ],
+        },
         "policy": {
             "cross_engine_scores_are_not_assumed_calibrated": True,
             "raw_and_normalized_outputs_are_preserved": True,
             "divergence_is_preserved": True,
+            "embedding_vectors_are_not_averaged_across_models": True,
         },
     }

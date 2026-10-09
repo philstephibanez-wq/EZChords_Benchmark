@@ -103,15 +103,34 @@ def main() -> int:
     if not source.is_file():
         raise RuntimeError(f"source_missing:{source}")
 
-    runtime_root = Path(
-        str(os.getenv("EZSTUDIO_RUNTIME_ROOT", r"H:\temp\EZStudio_lab"))
+    storage_root = Path(
+        str(
+            os.getenv("EZSTUDIO_STORAGE_ROOT")
+            or (project_root / "var" / "storage")
+        )
     )
+    tmp_root = Path(
+        str(
+            os.getenv("EZSTUDIO_TMP_ROOT")
+            or (project_root / "var" / "tmp")
+        )
+    )
+    runtime_deps_root = Path(
+        str(
+            os.getenv("EZSTUDIO_DEP_ROOT")
+            or (project_root / "var" / "runtime" / "deps")
+        )
+    )
+
     if not _is_under(source, project_root):
         raise RuntimeError(f"source_outside_lab_root:{source}")
-    if not _is_under(progress_file, runtime_root):
-        raise RuntimeError(f"progress_outside_lab_runtime:{progress_file}")
+    if not _is_under(progress_file, tmp_root):
+        raise RuntimeError(f"progress_outside_lab_tmp:{progress_file}")
 
-    env = _common_env(runtime_root)
+    env = _common_env(storage_root)
+    env.setdefault("EZSTUDIO_STORAGE_ROOT", str(storage_root))
+    env.setdefault("EZSTUDIO_TMP_ROOT", str(tmp_root))
+    env.setdefault("EZSTUDIO_DEP_ROOT", str(runtime_deps_root))
 
     if kind == "profile":
         runner = project_root / "python" / "ezstudio" / "pipeline" / "profile" / "runner.py"
@@ -119,8 +138,8 @@ def main() -> int:
             raise RuntimeError(f"profile_runner_missing:{runner}")
         audio_hash = _required_string(request, "audio_hash")
         output_path = Path(_required_string(request, "output_path"))
-        if not _is_under(output_path, runtime_root):
-            raise RuntimeError(f"profile_output_outside_lab_runtime:{output_path}")
+        if not _is_under(output_path, storage_root):
+            raise RuntimeError(f"profile_output_outside_lab_storage:{output_path}")
         command = [
             sys.executable, str(runner),
             "--source", str(source),
@@ -138,8 +157,8 @@ def main() -> int:
 
         audio_hash = _required_string(request, "audio_hash")
         storage_root = Path(_required_string(request, "storage_root"))
-        if not _is_under(storage_root, runtime_root):
-            raise RuntimeError(f"stems_storage_outside_lab_runtime:{storage_root}")
+        if not _is_under(storage_root, Path(env["EZSTUDIO_STORAGE_ROOT"])):
+            raise RuntimeError(f"stems_storage_outside_lab_storage:{storage_root}")
 
         command = [
             sys.executable,
@@ -172,14 +191,14 @@ def main() -> int:
         raise RuntimeError("invalid_run_id")
     if not _is_under(database, project_root):
         raise RuntimeError(f"database_outside_lab_root:{database}")
-    if not _is_under(deps, runtime_root):
-        raise RuntimeError(f"deps_outside_lab_runtime:{deps}")
+    if not _is_under(deps, runtime_deps_root):
+        raise RuntimeError(f"deps_outside_lab_runtime_deps:{deps}")
     if kind == "chords_scientific":
         if selection_request is None or not selection_request.is_file():
             raise RuntimeError("selection_request_missing")
-        if not _is_under(selection_request, runtime_root):
+        if not _is_under(selection_request, tmp_root):
             raise RuntimeError(
-                f"selection_request_outside_lab_runtime:{selection_request}"
+                f"selection_request_outside_lab_tmp:{selection_request}"
             )
 
     worker = project_root / "python" / "worker.py"
@@ -203,9 +222,9 @@ def main() -> int:
         command += ["--selection-request", str(selection_request)]
 
     env.setdefault("EZSTUDIO_DEP_ROOT", str(deps))
-    env.setdefault("EZSTUDIO_STEMS_CACHE_ROOT", str(runtime_root / "stems"))
-    env.setdefault("EZSTUDIO_OBSERVABILITY_ROOT", str(runtime_root / "observability"))
-    env.setdefault("EZSTUDIO_EXPORT_ROOT", str(runtime_root / "exports"))
+    env.setdefault("EZSTUDIO_STEMS_CACHE_ROOT", str(storage_root / "stems"))
+    env.setdefault("EZSTUDIO_OBSERVABILITY_ROOT", str(tmp_root / "observability"))
+    env.setdefault("EZSTUDIO_EXPORT_ROOT", str(storage_root / "exports"))
 
     completed = subprocess.run(
         command,

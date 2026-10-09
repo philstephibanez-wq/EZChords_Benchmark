@@ -110,7 +110,8 @@ def run_pedal(
             record["model"].update(output["model"])
         if output.get("device"):
             record["device"] = output["device"]
-        record["status"] = "ok"
+        requested_status = str(output.get("status") or "ok")
+        record["status"] = requested_status if requested_status in {"ok", "skipped"} else "ok"
     except Exception as exc:
         record["status"] = "error"
         record["error"] = {

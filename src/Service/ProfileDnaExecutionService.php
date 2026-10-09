@@ -13,7 +13,7 @@ final class ProfileDnaExecutionService
         if (!in_array((string)$run['state'], ['created','error'], true)) throw new \InvalidArgumentException('profile_run_not_queueable');
         if (!is_file($sourcePath)) throw new \RuntimeException('profile_source_missing');
 
-        $runtimeRoot = rtrim((string)(getenv('EZSTUDIO_RUNTIME_ROOT') ?: 'H:\\temp\\EZStudio_lab'), '\\/');
+        $runtimeRoot = rtrim((string)(getenv('EZSTUDIO_STORAGE_ROOT') ?: dirname(__DIR__, 2).DIRECTORY_SEPARATOR.'var'.DIRECTORY_SEPARATOR.'storage'), '\\/');
         $outputDir = $runtimeRoot.DIRECTORY_SEPARATOR.'profile'.DIRECTORY_SEPARATOR.$audioHash.DIRECTORY_SEPARATOR.sprintf('run-%06d', $scientificRunId);
         $outputPath = $outputDir.DIRECTORY_SEPARATOR.'profile.json';
         $request = [
@@ -94,7 +94,7 @@ final class ProfileDnaExecutionService
         ], 'PROFILE JSON');
 
         $metrics = is_array($result['characteristics'] ?? null) ? $result['characteristics'] : [];
-        $diagnostics = ['tagging' => $result['tagging'] ?? [], 'warnings' => $result['warnings'] ?? []];
+        $diagnostics = ['tagging' => $result['tagging'] ?? [], 'profile_view' => $result['profile_view'] ?? [], 'warnings' => $result['warnings'] ?? []];
         $environment = is_array($result['environment'] ?? null) ? $result['environment'] : [];
         $this->dna->setLabel($runId, 'progress', '100');
         $this->dna->setLabel($runId, 'automatic_next_stage', 'false');

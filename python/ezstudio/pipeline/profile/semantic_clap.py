@@ -43,7 +43,7 @@ def _dependency_root() -> Path:
     return Path(
         os.getenv(
             "EZSTUDIO_PROFILE_DEP_ROOT",
-            r"H:\temp\EZStudio_lab\deps\profile-r3b10",
+            r"H:\\EZStudio_lab\\var\\runtime\\deps\\profile-r3b10",
         )
     )
 
@@ -181,7 +181,7 @@ def clap_tags(source: Path, model_root: Path) -> tuple[dict, list[str]]:
             for chunk in chunks:
                 inputs = processor(
                     text=prompts,
-                    audios=chunk,
+                    audio=chunk,
                     sampling_rate=sr,
                     return_tensors="pt",
                     padding=True,

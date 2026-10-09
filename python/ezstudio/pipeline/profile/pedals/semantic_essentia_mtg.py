@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 
 import numpy as np
@@ -50,6 +51,31 @@ def _aggregate(
 
 
 def run(context: PedalContext) -> dict:
+    if os.name == "nt":
+        return {
+            "status": "skipped",
+            "raw": {
+                "reason": "essentia_tensorflow_python_bindings_unavailable_on_native_windows",
+            },
+            "normalized": {
+                "genre": [],
+                "instrumentation": [],
+                "mood": [],
+                "voice": [],
+            },
+            "warnings": [
+                "essentia_skipped_native_windows:use_clap_panns_passt",
+            ],
+            "engine": {
+                "version": None,
+            },
+            "model": {
+                "id": "essentia-discogs-effnet+mtg-jamendo",
+                "path": str(context.model_root),
+            },
+            "device": "unsupported:native-windows",
+        }
+
     try:
         import essentia
         from essentia.standard import (

@@ -14,13 +14,17 @@ import numpy as np
 from pedal import PedalContext, PedalSpec
 from pedalboard import Pedalboard
 from pedals import descriptors_librosa
+from pedals import embedding_mert
 from pedals import meter_chords_shared
 from pedals import rhythm_librosa
 from pedals import semantic_clap_open_vocab
 from pedals import semantic_essentia_mtg
+from pedals import semantic_panns
+from pedals import semantic_passt
 from pedals import tonal_ks
+from pedals import tonal_madmom_key
 
-R3B11_PROFILE_PEDALBOARD = True
+R3B13_PROFILE_CONSOLIDATION = True
 SCHEMA = "ezstudio.profile.v1"
 
 
@@ -74,10 +78,22 @@ def _legacy_projection(
 ) -> tuple[dict, dict, list[str]]:
     rhythm = _pedal_by_id(pedalboard_result, "rhythm.librosa-beat")
     meter = _pedal_by_id(pedalboard_result, "meter.chords-shared-r9")
-    tonal = _pedal_by_id(pedalboard_result, "tonal.krumhansl-schmuckler")
-    descriptors = _pedal_by_id(pedalboard_result, "descriptors.librosa-lowlevel")
-    essentia = _pedal_by_id(pedalboard_result, "semantic.essentia-discogs-mtg")
-    clap = _pedal_by_id(pedalboard_result, "semantic.clap-open-vocabulary")
+    tonal = _pedal_by_id(
+        pedalboard_result,
+        "tonal.krumhansl-schmuckler",
+    )
+    descriptors = _pedal_by_id(
+        pedalboard_result,
+        "descriptors.librosa-lowlevel",
+    )
+    essentia = _pedal_by_id(
+        pedalboard_result,
+        "semantic.essentia-discogs-mtg",
+    )
+    clap = _pedal_by_id(
+        pedalboard_result,
+        "semantic.clap-open-vocabulary",
+    )
 
     rhythm_n = _normalized(rhythm)
     meter_n = _normalized(meter)
@@ -97,9 +113,9 @@ def _legacy_projection(
         "spectral": descriptors_n.get("spectral") or {},
     }
 
-    # Legacy compatibility only:
-    # preserve the historical primary semantic projection while R3B11 records
-    # every semantic pedal independently in pedalboard.pedals.
+    # Compatibility projection: existing consumers keep their former
+    # Essentia-first/CLAP-second "tagging" contract. Scientific truth is
+    # the pedalboard, where all semantic engines remain independent.
     if essentia and essentia.get("status") == "ok":
         tagging = _normalized(essentia)
         tagging["available"] = True
@@ -120,7 +136,9 @@ def _legacy_projection(
 
     warnings: list[str] = []
     for record in pedalboard_result.get("pedals") or []:
-        warnings.extend(str(item) for item in (record.get("warnings") or []))
+        warnings.extend(
+            str(item) for item in (record.get("warnings") or [])
+        )
         if record.get("status") == "error":
             error = record.get("error") or {}
             warnings.append(
@@ -135,6 +153,68 @@ def _legacy_projection(
     return characteristics, tagging, warnings
 
 
+
+def _profile_view(pedalboard_result: dict) -> dict:
+    records = pedalboard_result.get("pedals") or []
+    consensus = pedalboard_result.get("consensus") or {}
+
+    pedal_rows = []
+    embeddings = []
+    counts = {"ok": 0, "skipped": 0, "error": 0}
+
+    for record in records:
+        status = str(record.get("status") or "error")
+        counts[status] = counts.get(status, 0) + 1
+        error = record.get("error") if isinstance(record.get("error"), dict) else {}
+        pedal_rows.append(
+            {
+                "id": record.get("id"),
+                "name": record.get("name"),
+                "family": record.get("family"),
+                "status": status,
+                "device": record.get("device"),
+                "elapsed_seconds": (record.get("timing") or {}).get("elapsed_seconds"),
+                "error": error.get("message"),
+                "warnings": list(record.get("warnings") or []),
+            }
+        )
+
+        if record.get("family") == "embedding":
+            normalized = (
+                record.get("normalized")
+                if isinstance(record.get("normalized"), dict)
+                else {}
+            )
+            raw = record.get("raw") if isinstance(record.get("raw"), dict) else {}
+            embeddings.append(
+                {
+                    "id": record.get("id"),
+                    "name": record.get("name"),
+                    "status": status,
+                    "embedding_norm": normalized.get("embedding_norm"),
+                    "temporal_std_mean": normalized.get("temporal_std_mean"),
+                    "hidden_size": raw.get("hidden_size"),
+                    "chunk_count": raw.get("chunk_count"),
+                }
+            )
+
+    semantic = consensus.get("semantic") if isinstance(consensus.get("semantic"), dict) else {}
+    audioset = semantic.get("audioset") if isinstance(semantic.get("audioset"), dict) else {}
+
+    return {
+        "counts": counts,
+        "pedals": pedal_rows,
+        "tonal": consensus.get("tonal") or {},
+        "audioset": {
+            "method": audioset.get("method"),
+            "agreements": list(audioset.get("agreements") or [])[:25],
+            "divergences": list(audioset.get("divergences") or [])[:25],
+        },
+        "embeddings": embeddings,
+        "policy": consensus.get("policy") or {},
+    }
+
+
 def _model_roots() -> tuple[Path, Path]:
     ai_root = Path(os.getenv("AI_MODELS_ROOT", r"H:\AIModels"))
     profile_root = Path(
@@ -146,7 +226,10 @@ def _model_roots() -> tuple[Path, Path]:
     return ai_root, profile_root
 
 
-def build_pedalboard(profile_root: Path) -> Pedalboard:
+def build_pedalboard(
+    ai_root: Path,
+    profile_root: Path,
+) -> Pedalboard:
     return (
         Pedalboard()
         .add(
@@ -156,7 +239,10 @@ def build_pedalboard(profile_root: Path) -> Pedalboard:
                 family="rhythm",
                 order=10,
                 engine="librosa",
-                parameters={"mono": True, "analysis_sample_rate": 22050},
+                parameters={
+                    "mono": True,
+                    "analysis_sample_rate": 22050,
+                },
             ),
             rhythm_librosa.run,
         )
@@ -172,7 +258,13 @@ def build_pedalboard(profile_root: Path) -> Pedalboard:
                     Path(
                         os.getenv(
                             "EZSTUDIO_BEAT_THIS_CHECKPOINT",
-                            r"H:\AIModels\audio\rhythm\beat-this\beat_this-final0.ckpt",
+                            str(
+                                ai_root
+                                / "audio"
+                                / "rhythm"
+                                / "beat-this"
+                                / "beat_this-final0.ckpt"
+                            ),
                         )
                     )
                 ),
@@ -191,6 +283,45 @@ def build_pedalboard(profile_root: Path) -> Pedalboard:
                 parameters={"chroma": "CQT"},
             ),
             tonal_ks.run,
+        )
+        .add(
+            PedalSpec(
+                pedal_id="tonal.madmom-key-cnn-2017",
+                display_name="Madmom Key CNN 2017 Ensemble",
+                family="tonal",
+                order=31,
+                engine="madmom-infer",
+                model_id="CPJKU-key-cnn-2017-ensemble4",
+                model_path=str(
+                    ai_root
+                    / "audio"
+                    / "tonal"
+                    / "madmom-key-cnn"
+                    / "2017"
+                ),
+                device="cpu:numpy",
+            ),
+            tonal_madmom_key.run_2017,
+        )
+        .add(
+            PedalSpec(
+                pedal_id="tonal.madmom-key-cnn-2018",
+                display_name="Madmom Genre-Agnostic Key CNN 2018",
+                family="tonal",
+                order=32,
+                engine="madmom-infer",
+                model_id="CPJKU-key-cnn-2018",
+                model_path=str(
+                    ai_root
+                    / "audio"
+                    / "tonal"
+                    / "madmom-key-cnn"
+                    / "2018"
+                    / "key_cnn.pkl"
+                ),
+                device="cpu:numpy",
+            ),
+            tonal_madmom_key.run_2018,
         )
         .add(
             PedalSpec(
@@ -223,7 +354,9 @@ def build_pedalboard(profile_root: Path) -> Pedalboard:
                 order=60,
                 engine="transformers.CLAP",
                 model_id="laion/clap-htsat-unfused",
-                model_path=str(profile_root / "clap-htsat-unfused"),
+                model_path=str(
+                    profile_root / "clap-htsat-unfused"
+                ),
                 device="cuda:0",
                 parameters={
                     "chunk_seconds": 10.0,
@@ -232,6 +365,104 @@ def build_pedalboard(profile_root: Path) -> Pedalboard:
                 },
             ),
             semantic_clap_open_vocab.run,
+        )
+        .add(
+            PedalSpec(
+                pedal_id="embedding.mert-95m",
+                display_name="MERT Music Embedding 95M",
+                family="embedding",
+                order=70,
+                engine="transformers.MERT",
+                model_id="m-a-p/MERT-v1-95M",
+                model_path=str(
+                    ai_root
+                    / "audio"
+                    / "embeddings"
+                    / "mert"
+                    / "MERT-v1-95M"
+                ),
+                device="cuda:0",
+                parameters={
+                    "chunk_seconds": 10.0,
+                    "max_chunks": 6,
+                    "aggregation": "mean",
+                    "dtype": "float16",
+                },
+            ),
+            embedding_mert.run_95m,
+        )
+        .add(
+            PedalSpec(
+                pedal_id="embedding.mert-330m",
+                display_name="MERT Music Embedding 330M",
+                family="embedding",
+                order=71,
+                engine="transformers.MERT",
+                model_id="m-a-p/MERT-v1-330M",
+                model_path=str(
+                    ai_root
+                    / "audio"
+                    / "embeddings"
+                    / "mert"
+                    / "MERT-v1-330M"
+                ),
+                device="cuda:0",
+                parameters={
+                    "chunk_seconds": 10.0,
+                    "max_chunks": 6,
+                    "aggregation": "mean",
+                    "dtype": "float16",
+                },
+            ),
+            embedding_mert.run_330m,
+        )
+        .add(
+            PedalSpec(
+                pedal_id="semantic.panns-cnn14",
+                display_name="PANNs CNN14 AudioSet",
+                family="semantic",
+                order=80,
+                engine="panns-inference",
+                model_id="Cnn14_mAP=0.431",
+                model_path=str(
+                    ai_root
+                    / "audio"
+                    / "semantic"
+                    / "panns"
+                    / "Cnn14_mAP=0.431.pth"
+                ),
+                device="cuda:0",
+                parameters={
+                    "sample_rate": 32000,
+                    "chunk_seconds": 10.0,
+                    "max_chunks": 8,
+                },
+            ),
+            semantic_panns.run,
+        )
+        .add(
+            PedalSpec(
+                pedal_id="semantic.passt-audioset",
+                display_name="PaSST AudioSet Transformer",
+                family="semantic",
+                order=81,
+                engine="hear21passt",
+                model_id="passt_s_swa_p16_128_ap476",
+                model_path=str(
+                    ai_root
+                    / "audio"
+                    / "semantic"
+                    / "passt"
+                    / "passt-s-f128-p16-s10-ap.476-swa.pt"
+                ),
+                device="cuda:0",
+                parameters={
+                    "sample_rate": 32000,
+                    "chunk_seconds": 10.0,
+                    "max_chunks": 8,
+                },
+            ),
+            semantic_passt.run,
         )
     )
 
@@ -268,7 +499,7 @@ def main() -> int:
         ai_models_root=ai_root,
     )
 
-    board = build_pedalboard(profile_root)
+    board = build_pedalboard(ai_root, profile_root)
     pedalboard_result = board.run(
         context,
         progress=lambda percent, message: write_progress(
@@ -282,6 +513,7 @@ def main() -> int:
         pedalboard_result,
         duration,
     )
+    profile_view = _profile_view(pedalboard_result)
 
     result = {
         "schema": SCHEMA,
@@ -289,6 +521,7 @@ def main() -> int:
         "source_sha256": sha256(source),
         "characteristics": characteristics,
         "tagging": tagging,
+        "profile_view": profile_view,
         "pedalboard": {
             **pedalboard_result,
             "ai_models_root": str(ai_root),
@@ -301,16 +534,25 @@ def main() -> int:
             "librosa": getattr(librosa, "__version__", ""),
             "ai_models_root": str(ai_root),
             "profile_models": str(profile_root),
-            "profile_semantic_backend": str(tagging.get("backend") or ""),
-            "profile_meter_source": str(
-                characteristics.get("time_signature", {}).get("source") or ""
+            "profile_semantic_backend": str(
+                tagging.get("backend") or ""
             ),
-            "profile_architecture": "pedalboard-r3b11",
+            "profile_meter_source": str(
+                characteristics
+                .get("time_signature", {})
+                .get("source")
+                or ""
+            ),
+            "profile_architecture": "pedalboard-r3b13",
+            "profile_dependency_root": os.getenv(
+                "EZSTUDIO_PROFILE_DEP_ROOT",
+                r"H:\EZStudio_lab\var\runtime\deps\profile-r3b12",
+            ),
         },
         "automatic_next_stage": False,
     }
 
-    write_progress(progress, 94, "PROFILE: écriture ADN pedalboard")
+    write_progress(progress, 96, "PROFILE: écriture ADN R3B12")
     tmp = output.with_suffix(".tmp")
     tmp.write_text(
         json.dumps(result, ensure_ascii=False, indent=2),

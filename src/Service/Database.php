@@ -469,7 +469,7 @@ SQL;
             'run_id' => $runId,
             'database' => $this->path(),
             'signature' => $signature,
-            'deps' => (string)(getenv('EZSTUDIO_DEP_ROOT') ?: 'H:\\temp\\EZStudio_lab\\deps'),
+            'deps' => (string)(getenv('EZSTUDIO_DEP_ROOT') ?: dirname(__DIR__, 2).DIRECTORY_SEPARATOR.'var'.DIRECTORY_SEPARATOR.'runtime'.DIRECTORY_SEPARATOR.'deps'),
             'keep_upload' => ((string)(getenv('KEEP_UPLOADS') ?: '1')) !== '0',
             'audio_sha256' => (string)($run['audio_sha256'] ?? ''),
         ];
@@ -606,7 +606,7 @@ SQL;
             'scientific_run_id' => $scientificRunId,
             'database' => $this->path(),
             'signature' => $signature,
-            'deps' => (string)(getenv('EZSTUDIO_DEP_ROOT') ?: 'H:\\temp\\EZStudio_lab\\deps'),
+            'deps' => (string)(getenv('EZSTUDIO_DEP_ROOT') ?: dirname(__DIR__, 2).DIRECTORY_SEPARATOR.'var'.DIRECTORY_SEPARATOR.'runtime'.DIRECTORY_SEPARATOR.'deps'),
             'keep_upload' => true,
             'audio_sha256' => (string)($run['audio_sha256'] ?? ''),
             'selection_request' => $selectionRequestPath,
@@ -773,11 +773,11 @@ SQL;
             throw new \RuntimeException('invalid_job_request');
         }
 
-        $runtimeRoot = rtrim(
-            (string)(getenv('EZSTUDIO_RUNTIME_ROOT') ?: 'H:\\temp\\EZStudio_lab'),
+        $tmpRoot = rtrim(
+            (string)(getenv('EZSTUDIO_TMP_ROOT') ?: dirname(__DIR__, 2).DIRECTORY_SEPARATOR.'var'.DIRECTORY_SEPARATOR.'tmp'),
             '\\/'
         );
-        $progressFile = $runtimeRoot
+        $progressFile = $tmpRoot
             .DIRECTORY_SEPARATOR.'jobs'
             .DIRECTORY_SEPARATOR.(string)$id
             .DIRECTORY_SEPARATOR.'progress.json';

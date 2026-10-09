@@ -11,7 +11,7 @@ final class LabJobStore
         $this->root = (string)(
             $_ENV['EZSTUDIO_JOB_ROOT']
             ?? $_SERVER['EZSTUDIO_JOB_ROOT']
-            ?? 'H:\temp\EZStudio_lab\jobs'
+            ?? dirname(__DIR__, 2).DIRECTORY_SEPARATOR.'var'.DIRECTORY_SEPARATOR.'tmp'.DIRECTORY_SEPARATOR.'jobs'
         );
         $this->ensureDir($this->root);
     }
@@ -60,7 +60,7 @@ final class LabJobStore
         ?int $parentJobId = null,
         ?int $scientificRunId = null,
     ): array {
-        $storageRoot = 'H:\temp\EZStudio_lab\stems'
+        $storageRoot = (string)(getenv('EZSTUDIO_STEMS_CACHE_ROOT') ?: dirname(__DIR__, 2).DIRECTORY_SEPARATOR.'var'.DIRECTORY_SEPARATOR.'storage'.DIRECTORY_SEPARATOR.'stems')
             .DIRECTORY_SEPARATOR.$audioHash;
         $progressFile = $storageRoot.DIRECTORY_SEPARATOR.'progress.json';
 
@@ -296,13 +296,13 @@ final class LabJobStore
             if (
                 $source !== ''
                 && is_file($source)
-                && $this->isUnder($source, 'H:\temp\EZStudio_lab\uploads')
+                && $this->isUnder($source, (string)(getenv('EZSTUDIO_TMP_ROOT') ?: dirname(__DIR__, 2).DIRECTORY_SEPARATOR.'var'.DIRECTORY_SEPARATOR.'tmp').DIRECTORY_SEPARATOR.'uploads')
             ) {
                 @unlink($source);
             }
         }
 
-        $storageRoot = 'H:\temp\EZStudio_lab\stems'
+        $storageRoot = (string)(getenv('EZSTUDIO_STEMS_CACHE_ROOT') ?: dirname(__DIR__, 2).DIRECTORY_SEPARATOR.'var'.DIRECTORY_SEPARATOR.'storage'.DIRECTORY_SEPARATOR.'stems')
             .DIRECTORY_SEPARATOR.$audioHash;
         if (is_dir($storageRoot)) {
             $this->removeTree($storageRoot);

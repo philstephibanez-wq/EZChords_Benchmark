@@ -44,7 +44,7 @@ final class StemsDnaExecutionService
         }
 
         $storageRoot = rtrim(
-            (string)(getenv('EZSTUDIO_RUNTIME_ROOT') ?: 'H:\\temp\\EZStudio_lab'),
+            (string)(getenv('EZSTUDIO_STORAGE_ROOT') ?: dirname(__DIR__, 2).DIRECTORY_SEPARATOR.'var'.DIRECTORY_SEPARATOR.'storage'),
             '\\/'
         ).DIRECTORY_SEPARATOR.'stems'.DIRECTORY_SEPARATOR.$audioHash;
 
@@ -238,12 +238,12 @@ final class StemsDnaExecutionService
             default => $status,
         };
 
-        $runtimeRoot = rtrim(
-            (string)(getenv('EZSTUDIO_RUNTIME_ROOT') ?: 'H:\\temp\\EZStudio_lab'),
+        $tmpRoot = rtrim(
+            (string)(getenv('EZSTUDIO_TMP_ROOT') ?: dirname(__DIR__, 2).DIRECTORY_SEPARATOR.'var'.DIRECTORY_SEPARATOR.'tmp'),
             '\\/'
         );
         $storageRoot = trim((string)($request['storage_root'] ?? ''));
-        $progressFile = $runtimeRoot
+        $progressFile = $tmpRoot
             .DIRECTORY_SEPARATOR.'jobs'
             .DIRECTORY_SEPARATOR.(string)$row['id']
             .DIRECTORY_SEPARATOR.'progress.json';
