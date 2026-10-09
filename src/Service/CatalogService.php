@@ -69,6 +69,151 @@ final class CatalogService
         return $out;
     }
 
+    public function abandonRegion(
+        int $songId,
+        string $region
+    ): array {
+        $order = ['profile', 'stems', 'chords', 'lyrics'];
+        $offset = array_search($region, $order, true);
+        if ($offset === false) {
+            throw new \InvalidArgumentException('catalog_invalid_region');
+        }
+        $targets = array_slice($order, (int)$offset);
+
+        $stmt = $this->db->pdo()->prepare(
+            'SELECT id,audio_sha256 FROM songs WHERE id=?'
+        );
+        $stmt->execute([$songId]);
+        $seed = $stmt->fetch();
+        if (!$seed) {
+            throw new \RuntimeException('catalog_song_not_found');
+        }
+
+        $hash = trim((string)$seed['audio_sha256']);
+        if ($hash !== '') {
+            $stmt = $this->db->pdo()->prepare(
+                'SELECT id FROM songs WHERE audio_sha256=? ORDER BY id'
+            );
+            $stmt->execute([$hash]);
+            $songIds = array_map(
+                static fn(array $row): int => (int)$row['id'],
+                $stmt->fetchAll()
+            );
+        } else {
+            $songIds = [$songId];
+        }
+
+        $owner = 'catalog-abandon-region-'
+            .$songId.'-'.$region.'-'.bin2hex(random_bytes(8));
+
+        $this->db->acquireAnalysisRegionLocks(
+            $songIds,
+            $targets,
+            $owner,
+            300
+        );
+
+        try {
+            $active = $this->db->requestRegionCancellation(
+                $songIds,
+                $targets,
+                60
+            );
+            if ($active !== []) {
+                $ids = implode(
+                    ',',
+                    array_map(
+                        static fn(array $row): string =>
+                            (string)$row['id'],
+                        $active
+                    )
+                );
+                throw new \RuntimeException(
+                    'catalog_region_cancel_pending:jobs='.$ids
+                );
+            }
+
+            if (!$this->tableExists('scientific_runs')) {
+                return [
+                    'song_ids' => $songIds,
+                    'audio_sha256' => $hash,
+                    'abandoned_regions' => $targets,
+                    'abandoned_run_ids' => [],
+                ];
+            }
+
+            $marks = implode(',', array_fill(0, count($songIds), '?'));
+            $targetMarks = implode(',', array_fill(0, count($targets), '?'));
+
+            $stmt = $this->db->pdo()->prepare(
+                "SELECT id FROM scientific_runs
+                 WHERE song_id IN ($marks)
+                   AND item IN ($targetMarks)
+                   AND state!='abandoned'
+                 ORDER BY id"
+            );
+            $i = 1;
+            foreach ($songIds as $id) {
+                $stmt->bindValue($i++, $id, PDO::PARAM_INT);
+            }
+            foreach ($targets as $item) {
+                $stmt->bindValue($i++, $item, PDO::PARAM_STR);
+            }
+            $stmt->execute();
+            $runIds = array_map(
+                static fn(array $row): int => (int)$row['id'],
+                $stmt->fetchAll()
+            );
+
+            if ($runIds !== []) {
+                $runMarks = implode(',', array_fill(0, count($runIds), '?'));
+                $pdo = $this->db->pdo();
+                $pdo->beginTransaction();
+                try {
+                    $update = $pdo->prepare(
+                        "UPDATE scientific_runs
+                         SET state='abandoned'
+                         WHERE id IN ($runMarks)"
+                    );
+                    $this->bindIds($update, $runIds);
+                    $update->execute();
+
+                    if ($this->tableExists('scientific_run_labels')) {
+                        $label = $pdo->prepare(
+                            'INSERT INTO scientific_run_labels(
+                                run_id,label,value
+                             ) VALUES(?,?,?)
+                             ON CONFLICT(run_id,label)
+                             DO UPDATE SET value=excluded.value'
+                        );
+                        $now = gmdate('c');
+                        foreach ($runIds as $runId) {
+                            $label->execute([$runId, 'lifecycle', 'abandoned']);
+                            $label->execute([$runId, 'abandoned_at', $now]);
+                            $label->execute([$runId, 'abandoned_from_region', $region]);
+                        }
+                    }
+
+                    $pdo->commit();
+                } catch (\Throwable $e) {
+                    if ($pdo->inTransaction()) {
+                        $pdo->rollBack();
+                    }
+                    throw $e;
+                }
+            }
+
+            return [
+                'song_ids' => $songIds,
+                'audio_sha256' => $hash,
+                'abandoned_regions' => $targets,
+                'abandoned_run_ids' => $runIds,
+            ];
+        } finally {
+            $this->db->releaseAnalysisRegionLocks($owner);
+        }
+    }
+
     public function deleteRegion(int $songId, string $region): array
     {
         $order = ['profile', 'stems', 'chords', 'lyrics'];
@@ -690,7 +835,9 @@ final class CatalogService
         $stmt = $this->db->pdo()->prepare(
             "SELECT id,public_id,state,created_at
              FROM scientific_runs
-             WHERE song_id IN ($marks) AND item=?
+             WHERE song_id IN ($marks)
+               AND item=?
+               AND state!='abandoned'
              ORDER BY id DESC LIMIT 1"
         );
         $i = 1;

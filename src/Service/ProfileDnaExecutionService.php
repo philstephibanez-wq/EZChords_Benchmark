@@ -4,7 +4,11 @@ namespace App\Service;
 
 final class ProfileDnaExecutionService
 {
-    public function __construct(private readonly Database $db, private readonly DnaRegistry $dna) {}
+    public function __construct(
+        private readonly Database $db,
+        private readonly DnaRegistry $dna,
+        private readonly GenomeRegistry $genome,
+    ) {}
 
     public function queue(int $scientificRunId, string $sourcePath, string $audioHash): array
     {
@@ -93,9 +97,29 @@ final class ProfileDnaExecutionService
             'audio_sha256' => $result['audio_sha256'] ?? '',
         ], 'PROFILE JSON');
 
+        $genomeManifest = $result['genome'] ?? null;
+        if (!is_array($genomeManifest)) {
+            throw new \RuntimeException('profile_genome_manifest_missing');
+        }
+        $regionRevision = $this->genome->captureRunGenome(
+            $runId,
+            'profile',
+            $genomeManifest,
+        );
+
         $metrics = is_array($result['characteristics'] ?? null) ? $result['characteristics'] : [];
-        $diagnostics = ['tagging' => $result['tagging'] ?? [], 'profile_view' => $result['profile_view'] ?? [], 'warnings' => $result['warnings'] ?? []];
+        $diagnostics = ['tagging' => $result['tagging'] ?? [], 'profile_view' => $result['profile_view'] ?? [], 'gene_registry' => $result['gene_registry'] ?? [], 'warnings' => $result['warnings'] ?? []];
         $environment = is_array($result['environment'] ?? null) ? $result['environment'] : [];
+        $this->dna->setLabel(
+            $runId,
+            'genome_region_revision',
+            (string)$regionRevision['revision_ref']
+        );
+        $this->dna->setLabel(
+            $runId,
+            'genome_region_fingerprint',
+            (string)$regionRevision['fingerprint']
+        );
         $this->dna->setLabel($runId, 'progress', '100');
         $this->dna->setLabel($runId, 'automatic_next_stage', 'false');
         $this->dna->setState($runId, 'done', $metrics, $diagnostics, $environment, gmdate('c'));

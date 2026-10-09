@@ -57,20 +57,84 @@ def estimate_key(chroma: np.ndarray) -> dict:
     }
 
 
+def _temporal_key_windows(
+    chroma: np.ndarray,
+    sr: int,
+    *,
+    hop_length: int = 512,
+    chunk_seconds: float = 10.0,
+) -> list[dict]:
+    matrix = np.asarray(chroma, dtype=np.float64)
+    if matrix.ndim != 2 or matrix.shape[1] <= 0:
+        return []
+
+    frames_per_chunk = max(
+        1,
+        int(round(float(chunk_seconds) * float(sr) / float(hop_length))),
+    )
+    rows = []
+    for start in range(0, matrix.shape[1], frames_per_chunk):
+        stop = min(matrix.shape[1], start + frames_per_chunk)
+        if stop <= start:
+            continue
+        window = estimate_key(np.nanmean(matrix[:, start:stop], axis=1))
+        rows.append(
+            {
+                "start_seconds": round(start * hop_length / float(sr), 3),
+                "end_seconds": round(stop * hop_length / float(sr), 3),
+                "label": window.get("label"),
+                "confidence": window.get("confidence"),
+                "margin": window.get("margin"),
+            }
+        )
+    return rows
+
+
 def run(context: GeneContext) -> dict:
     import librosa
 
-    chroma = librosa.feature.chroma_cqt(y=context.y, sr=context.sr)
+    hop_length = 512
+    chroma = librosa.feature.chroma_cqt(
+        y=context.y,
+        sr=context.sr,
+        hop_length=hop_length,
+    )
     result = estimate_key(np.nanmean(chroma, axis=1))
+    temporal = _temporal_key_windows(
+        chroma,
+        context.sr,
+        hop_length=hop_length,
+        chunk_seconds=10.0,
+    )
+    global_label = result.get("label")
+    labelled = [row for row in temporal if row.get("label")]
+    matching = [
+        row for row in labelled
+        if row.get("label") == global_label
+    ]
+    stability = len(matching) / len(labelled) if labelled else None
+
     return {
         "raw": {
             "mean_chroma": np.nanmean(chroma, axis=1).round(8).tolist(),
             "candidate_scores": result.get("candidate_scores", []),
+            "temporal": {
+                "chunk_seconds": 10.0,
+                "windows": temporal,
+            },
         },
         "normalized": {
-            key: value
-            for key, value in result.items()
-            if key != "candidate_scores"
+            **{
+                key: value
+                for key, value in result.items()
+                if key != "candidate_scores"
+            },
+            "temporal_stability": (
+                round(float(stability), 6)
+                if stability is not None
+                else None
+            ),
+            "temporal_window_count": len(labelled),
         },
         "calibrated": {
             "status": "heuristic",

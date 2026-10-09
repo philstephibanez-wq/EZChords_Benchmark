@@ -77,12 +77,12 @@
           <form method="post"
                 action="{{ path('catalog_region_delete',{id:song.id,region:action.key}) }}"
                 class="catalog-delete-form"
-                data-confirm="Supprimer {{ action.cascade }} pour « {{ song.title|e('html_attr') }} » ?"
+                data-confirm="Abandonner {{ action.cascade }} pour « {{ song.title|e('html_attr') }} » ? L'ADN et l'historique seront conservés."
                 style="display:inline">
             <button type="submit"
                     class="secondary catalog-trash catalog-delete-button"
-                    title="Supprimer {{ action.cascade }}"
-                    aria-label="Supprimer {{ action.cascade }}">🗑</button>
+                    title="Abandonner {{ action.cascade }} sans détruire l’ADN"
+                    aria-label="Abandonner {{ action.cascade }}">🗑</button>
           </form>
           {% endif %}
         </span>
@@ -109,7 +109,7 @@
             style="display:inline">
         <button type="submit"
                 class="secondary catalog-trash catalog-delete-button"
-                title="Supprimer la chanson entière"
+                title="Purge définitive de la chanson entière"
                 aria-label="Supprimer {{ song.title }}">🗑</button>
       </form>
     </div>

@@ -5,6 +5,7 @@ namespace App\Controller;
 use App\Service\DnaRegistry;
 use App\Service\ProfileDnaExecutionService;
 use App\Service\ProfileFrenchSummary;
+use App\Service\ProfileValidationService;
 use App\Service\WorkbenchCatalog;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\RedirectResponse;
@@ -21,8 +22,14 @@ final class ProfileController extends AbstractController
     }
 
     #[Route('/workbench/profile', name: 'workbench_profile', methods: ['GET'])]
-    public function index(Request $request, WorkbenchCatalog $catalog, DnaRegistry $dna, ProfileDnaExecutionService $execution, ProfileFrenchSummary $summary): Response
-    {
+    public function index(
+        Request $request,
+        WorkbenchCatalog $catalog,
+        DnaRegistry $dna,
+        ProfileDnaExecutionService $execution,
+        ProfileFrenchSummary $summary,
+        ProfileValidationService $validation,
+    ): Response {
         $song = $catalog->selectedSong($this->songId($request));
         $runs = [];
         $selected = null;
@@ -59,7 +66,69 @@ final class ProfileController extends AbstractController
             'selected_profile_run' => $selected,
             'profile_job' => $selected ? $execution->jobForRun((int)$selected['id']) : null,
             'profile_summary' => $selected ? $summary->build($selected) : null,
+            'profile_validation_subjects' => $selected
+                ? $validation->subjectsForRun($selected)
+                : [],
+            'profile_validations' => $selected
+                ? $validation->validationsForRun((int)$selected['id'])
+                : [],
+            'profile_validation_stats' => $selected
+                ? $validation->statsForRun(
+                    (int)$selected['id'],
+                    array_column(
+                        $validation->subjectsForRun($selected),
+                        'subject_key'
+                    )
+                )
+                : [
+                    'reviewed' => 0,
+                    'ok' => 0,
+                    'ko' => 0,
+                    'unknown' => 0,
+                    'known' => 0,
+                    'accuracy' => null,
+                ],
         ]);
+    }
+
+    #[Route(
+        '/profile/{id<\d+>}/validate',
+        name: 'profile_validate',
+        methods: ['POST']
+    )]
+    public function validate(
+        int $id,
+        Request $request,
+        DnaRegistry $dna,
+        ProfileValidationService $validation,
+    ): Response {
+        $run = $dna->run($id);
+        if (!$run || (string)($run['item'] ?? '') !== 'profile') {
+            return new Response('Run PROFILE introuvable.', 404);
+        }
+
+        $annotations = $request->request->all('annotations');
+        try {
+            $validation->save(
+                $run,
+                is_array($annotations) ? $annotations : [],
+            );
+        } catch (\RuntimeException|\InvalidArgumentException $e) {
+            return new Response(
+                'Validation refusée : '.htmlspecialchars(
+                    $e->getMessage(),
+                    ENT_QUOTES
+                ),
+                409
+            );
+        }
+
+        return new RedirectResponse(
+            $this->generateUrl('workbench_profile', [
+                'song' => (int)$run['song_id'],
+                'run' => (int)$run['id'],
+            ])
+        );
     }
 
     #[Route('/profile/analyze', name: 'profile_analyze', methods: ['POST'])]
@@ -77,7 +146,7 @@ final class ProfileController extends AbstractController
         $run = $dna->createRun(
             (int)$song['id'],
             'profile',
-            ['name' => 'ezstudio-profile-genes', 'version' => 'r3b19', 'model' => 'multi-engine-profile-genes'],
+            ['name' => 'ezstudio-profile-genes', 'version' => 'r3b31', 'model' => 'multi-engine-profile-genes'],
             [
                 'audio_sha256' => (string)$song['audio_sha256'],
                 'output_contract' => 'ezstudio.profile.v1',

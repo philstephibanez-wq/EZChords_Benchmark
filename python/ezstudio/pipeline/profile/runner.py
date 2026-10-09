@@ -32,6 +32,7 @@ R3B16_PROFILE_CONFIDENCE = True
 R3B17_PROFILE_CONFIDENCE_V2 = True
 R3B18_PROFILE_CONFIDENCE_V3 = True
 R3B19_PROFILE_SEMANTIC_ROLES = True
+R3B31_GENOMIC_EVOLUTION = True
 
 
 def write_progress(path: Path, percent: int, message: str) -> None:
@@ -84,9 +85,8 @@ def _legacy_projection(
 ) -> tuple[dict, dict, list[str]]:
     rhythm = _gene_by_id(gene_registry_result, "rhythm.librosa-beat")
     meter = _gene_by_id(gene_registry_result, "meter.chords-shared-r9")
-    tonal = _gene_by_id(
-        gene_registry_result,
-        "tonal.krumhansl-schmuckler",
+    tonal_consensus = (
+        (gene_registry_result.get("consensus") or {}).get("tonal") or {}
     )
     descriptors = _gene_by_id(
         gene_registry_result,
@@ -99,8 +99,30 @@ def _legacy_projection(
 
     rhythm_n = _normalized(rhythm)
     meter_n = _normalized(meter)
-    tonal_n = _normalized(tonal)
     descriptors_n = _normalized(descriptors)
+
+    tonal_label = tonal_consensus.get("label")
+    tonic = None
+    mode = None
+    if isinstance(tonal_label, str) and " " in tonal_label:
+        tonic, mode = tonal_label.rsplit(" ", 1)
+
+    tonal_n = {
+        "label": tonal_label,
+        "tonic": tonic,
+        "mode": mode,
+        "confidence": None,
+        "calibrated": False,
+        "source": "profile-tonal-consensus-v1",
+        "decision": tonal_consensus.get("decision"),
+        "candidate_label": tonal_consensus.get("candidate_label"),
+        "support": tonal_consensus.get("support"),
+        "total_sources": tonal_consensus.get("total_sources"),
+        "agreement_ratio": tonal_consensus.get("agreement_ratio"),
+        "unanimous": tonal_consensus.get("unanimous"),
+        "sources": tonal_consensus.get("sources") or [],
+        "dissent": tonal_consensus.get("dissent") or [],
+    }
 
     characteristics = {
         "duration_seconds": round(duration, 3),
@@ -498,6 +520,9 @@ def main() -> int:
             message,
         ),
     )
+    genome_manifest = registry.genome_manifest(
+        gene_registry_result.get("genes") or [],
+    )
 
     characteristics, tagging, warnings = _legacy_projection(
         gene_registry_result,
@@ -517,6 +542,7 @@ def main() -> int:
             "ai_models_root": str(ai_root),
             "profile_models_root": str(profile_root),
         },
+        "genome": genome_manifest,
         "warnings": warnings,
         "environment": {
             "python": sys.version.split()[0],
@@ -533,7 +559,7 @@ def main() -> int:
                 .get("source")
                 or ""
             ),
-            "profile_architecture": "genes-r3b19",
+            "profile_architecture": "genes-r3b31-genomic-evolution",
             "profile_dependency_root": os.getenv(
                 "EZSTUDIO_PROFILE_DEP_ROOT",
                 r"H:\EZStudio_lab\var\runtime\deps\profile-r3b12",
@@ -542,7 +568,7 @@ def main() -> int:
         "automatic_next_stage": False,
     }
 
-    write_progress(progress, 96, "PROFILE: écriture ADN R3B19")
+    write_progress(progress, 96, "PROFILE: écriture ADN R3B31")
     tmp = output.with_suffix(".tmp")
     tmp.write_text(
         json.dumps(result, ensure_ascii=False, indent=2),

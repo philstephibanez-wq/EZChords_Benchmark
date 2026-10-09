@@ -21,6 +21,77 @@ class GeneRegistry:
         self._entries.append((spec, fn))
         return self
 
+    def genome_manifest(
+        self,
+        records: list[dict[str, Any]] | None = None,
+    ) -> dict[str, Any]:
+        import hashlib
+        import inspect
+        from pathlib import Path
+
+        by_id = {
+            str(record.get("id")): record
+            for record in (records or [])
+        }
+        genes = []
+
+        for spec, fn in sorted(
+            self._entries,
+            key=lambda item: item[0].order,
+        ):
+            runtime = by_id.get(spec.gene_id, {})
+            source_file = inspect.getsourcefile(fn)
+            source_sha256 = None
+            if source_file and Path(source_file).is_file():
+                h = hashlib.sha256()
+                with Path(source_file).open("rb") as handle:
+                    for chunk in iter(
+                        lambda: handle.read(1024 * 1024),
+                        b"",
+                    ):
+                        h.update(chunk)
+                source_sha256 = h.hexdigest()
+
+            engine = {
+                "name": spec.engine,
+                "version": spec.engine_version,
+            }
+            if isinstance(runtime.get("engine"), dict):
+                engine.update(runtime["engine"])
+
+            model = {
+                "id": spec.model_id,
+                "path": spec.model_path,
+            }
+            if isinstance(runtime.get("model"), dict):
+                model.update(runtime["model"])
+
+            genes.append(
+                {
+                    "id": spec.gene_id,
+                    "name": spec.display_name,
+                    "family": spec.family,
+                    "order": spec.order,
+                    "engine": engine,
+                    "model": model,
+                    "device": runtime.get("device") or spec.device,
+                    "parameters": spec.parameters,
+                    "thresholds": spec.thresholds,
+                    "weights": spec.weights,
+                    "implementation": {
+                        "callable": f"{fn.__module__}.{fn.__qualname__}",
+                        "source_sha256": source_sha256,
+                    },
+                }
+            )
+
+        return {
+            "schema": "ezstudio.genome.region.v1",
+            "region": "profile",
+            "pipeline_revision": "profile-r3b31-genomic-evolution",
+            "genes": genes,
+        }
+
     def run(
         self,
         context: GeneContext,
@@ -319,11 +390,22 @@ def build_consensus(records: list[dict[str, Any]]) -> dict[str, Any]:
     for record in tonal_records:
         normalized = record.get("normalized")
         if isinstance(normalized, dict) and normalized.get("label"):
+            calibrated = (
+                record.get("calibrated")
+                if isinstance(record.get("calibrated"), dict)
+                else {}
+            )
             labels.append(
                 {
                     "gene": record["id"],
                     "label": normalized.get("label"),
                     "confidence": normalized.get("confidence"),
+                    "margin": normalized.get("margin"),
+                    "temporal_stability": normalized.get(
+                        "temporal_stability"
+                    ),
+                    "calibration_status": calibrated.get("status"),
+                    "calibration_method": calibrated.get("method"),
                 }
             )
 
@@ -332,13 +414,40 @@ def build_consensus(records: list[dict[str, Any]]) -> dict[str, Any]:
         counts: dict[str, int] = defaultdict(int)
         for item in labels:
             counts[str(item["label"])] += 1
-        winner = max(counts.items(), key=lambda pair: pair[1])
+
+        ranked = sorted(
+            counts.items(),
+            key=lambda pair: (-pair[1], pair[0].casefold()),
+        )
+        candidate_label, support = ranked[0]
+        total_sources = len(labels)
+        accepted = support >= 2
+        dissent = [
+            item
+            for item in labels
+            if str(item["label"]) != candidate_label
+        ]
+
         tonal = {
-            "method": "label-vote-preserving-individual-confidence",
-            "label": winner[0],
-            "support": winner[1],
+            "method": "majority-vote-preserving-source-evidence-v1",
+            "decision": "accepted" if accepted else "ambiguous",
+            "label": candidate_label if accepted else None,
+            "candidate_label": candidate_label,
+            "support": support,
+            "total_sources": total_sources,
+            "agreement_ratio": round(
+                support / float(total_sources),
+                6,
+            ),
             "sources": labels,
-            "unanimous": winner[1] == len(labels),
+            "dissent": dissent,
+            "unanimous": support == total_sources,
+            "calibrated": False,
+            "confidence": None,
+            "confidence_note": (
+                "No calibrated cross-gene tonal probability yet; "
+                "source confidences/margins and dissent are preserved."
+            ),
         }
 
     embedding_records = [

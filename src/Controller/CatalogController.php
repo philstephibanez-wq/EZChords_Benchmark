@@ -24,7 +24,7 @@ final class CatalogController extends AbstractController
         ]);
 
         try {
-            $result = $catalog->deleteRegion($id, $region);
+            $result = $catalog->abandonRegion($id, $region);
         } catch (\RuntimeException $e) {
             $logger->warning('catalog_region_delete_refused', [
                 'song_id' => $id,
@@ -37,10 +37,10 @@ final class CatalogController extends AbstractController
             );
         }
 
-        $logger->info('catalog_region_delete_completed', [
+        $logger->info('catalog_region_abandon_completed', [
             'song_id' => $id,
             'region' => $region,
-            'deleted_regions' => $result['deleted_regions'] ?? [],
+            'abandoned_regions' => $result['abandoned_regions'] ?? [],
         ]);
         return new RedirectResponse($this->generateUrl('workbench_home'));
     }

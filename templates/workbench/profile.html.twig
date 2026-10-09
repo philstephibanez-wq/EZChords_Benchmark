@@ -72,6 +72,124 @@
 </style>
 {% endif %}
 
+{% if selected_profile_run.state == 'done' and profile_validation_subjects %}
+<div class="card profile-human-validation">
+  <div class="hero">
+    <div>
+      <h2>Validation humaine</h2>
+      <div class="meta">
+        Annotation du run {{ selected_profile_run.public_id }}.
+        Le formulaire valide les conclusions principales ; l’ADN conserve toutes les hypothèses et tous les scores.
+        UNKNOWN est une abstention humaine et n'est jamais compté comme erreur.
+      </div>
+    </div>
+    <div class="meta">
+      {{ profile_validation_stats.reviewed }} annoté(s) ·
+      {{ profile_validation_stats.ok }} OK ·
+      {{ profile_validation_stats.ko }} KO ·
+      {{ profile_validation_stats.unknown }} UNKNOWN
+      {% if profile_validation_stats.accuracy is not null %}
+        · précision sur avis connus {{ (profile_validation_stats.accuracy * 100)|number_format(1) }}%
+      {% endif %}
+    </div>
+  </div>
+
+  <form method="post"
+        action="{{ path('profile_validate',{id:selected_profile_run.id}) }}"
+        class="profile-human-validation-form">
+    <table class="profile-validation-table">
+      <thead>
+        <tr>
+          <th>Item</th>
+          <th>Proposition machine</th>
+          <th>Validation</th>
+          <th>Correction / éléments manquants</th>
+          <th>Certitude</th>
+          <th>Commentaire</th>
+        </tr>
+      </thead>
+      <tbody>
+      {% for subject in profile_validation_subjects %}
+        {% set saved = profile_validations[subject.subject_key] ?? null %}
+        <tr>
+          <td>
+            <strong>{{ subject.label }}</strong>
+            <div class="meta">
+              {{ subject.scope == 'gene' ? 'Gène' : 'Région' }}
+              · {{ subject.subject_key }}
+              {% if saved and saved.region_revision_ref %}
+                · {{ saved.region_revision_ref }}
+              {% endif %}
+              {% if saved and saved.gene_revision_ref %}
+                · {{ saved.gene_revision_ref }}
+              {% endif %}
+            </div>
+          </td>
+          <td class="profile-machine-value">{{ subject.predicted_text }}</td>
+          <td>
+            <input type="hidden"
+                   name="annotations[{{ loop.index0 }}][subject]"
+                   value="{{ subject.subject_key }}">
+            <div class="profile-verdicts" role="group" aria-label="Validation {{ subject.label }}">
+              <label><input type="radio" name="annotations[{{ loop.index0 }}][verdict]" value="ok" {{ saved and saved.verdict == 'ok' ? 'checked' : '' }}> OK</label>
+              <label><input type="radio" name="annotations[{{ loop.index0 }}][verdict]" value="ko" {{ saved and saved.verdict == 'ko' ? 'checked' : '' }}> KO</label>
+              <label><input type="radio" name="annotations[{{ loop.index0 }}][verdict]" value="unknown" {{ saved and saved.verdict == 'unknown' ? 'checked' : '' }}> UNKNOWN</label>
+            </div>
+          </td>
+          <td class="profile-human-truth">
+            <input type="text"
+                   name="annotations[{{ loop.index0 }}][human_value]"
+                   value="{{ saved ? saved.human_value : '' }}"
+                   placeholder="Correction attendue si KO"
+                   maxlength="500">
+            <input type="text"
+                   name="annotations[{{ loop.index0 }}][missing_expected]"
+                   value="{{ saved ? saved.missing_expected_text : '' }}"
+                   placeholder="Éléments manquants, séparés par ;"
+                   maxlength="1000">
+          </td>
+          <td>
+            <select name="annotations[{{ loop.index0 }}][reviewer_certainty]">
+              <option value="" {{ not saved or not saved.reviewer_certainty ? 'selected' : '' }}>—</option>
+              <option value="certain" {{ saved and saved.reviewer_certainty == 'certain' ? 'selected' : '' }}>Certain</option>
+              <option value="probable" {{ saved and saved.reviewer_certainty == 'probable' ? 'selected' : '' }}>Probable</option>
+              <option value="uncertain" {{ saved and saved.reviewer_certainty == 'uncertain' ? 'selected' : '' }}>Incertain</option>
+            </select>
+          </td>
+          <td>
+            <input type="text"
+                   name="annotations[{{ loop.index0 }}][comment]"
+                   value="{{ saved ? saved.comment : '' }}"
+                   placeholder="Contexte libre"
+                   maxlength="2000">
+          </td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    <div style="margin-top:12px">
+      <button type="submit">Enregistrer les annotations</button>
+      <span class="meta">Les lignes sans verdict sélectionné ne sont pas modifiées.</span>
+    </div>
+  </form>
+</div>
+<style>
+.profile-validation-table{width:100%;table-layout:fixed}
+.profile-validation-table th:nth-child(1){width:19%}
+.profile-validation-table th:nth-child(2){width:27%}
+.profile-validation-table th:nth-child(3){width:18%}
+.profile-validation-table th:nth-child(4){width:17%}
+.profile-validation-table th:nth-child(5){width:19%}
+.profile-machine-value{font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-size:11px;overflow-wrap:anywhere}
+.profile-verdicts{display:flex;gap:8px;flex-wrap:wrap}
+.profile-verdicts label{display:inline-flex;align-items:center;gap:3px;font-size:12px;white-space:nowrap}
+.profile-human-validation input[type="text"]{width:100%;box-sizing:border-box}
+.profile-human-truth input+input{margin-top:6px}
+.profile-human-validation select{width:100%;box-sizing:border-box}
+@media(max-width:1000px){.profile-validation-table{table-layout:auto}.profile-validation-table th:nth-child(n){width:auto}}
+</style>
+{% endif %}
+
 {% set pv = selected_profile_run.diagnostics.profile_view ?? {} %}
 {% set pc = pv.counts ?? {} %}
 {% set legacy_gene_key = 'ped' ~ 'als' %}
@@ -159,7 +277,7 @@
 {% endif %}
 
 <div class="card"><div class="meta">Moteur sémantique : {{ t.backend ?? 'indisponible' }}{% if t.model is defined %} · {{ t.model }}{% endif %}. Les scores CLAP sont relatifs à la taxonomie comparée, pas des probabilités calibrées.</div></div>
-<div class="card"><h2>Style / genre</h2>{% if t.available ?? false %}<table><thead><tr><th>Tag</th><th>Score</th></tr></thead><tbody>{% for x in t.genre ?? [] %}<tr><td>{{ x.label }}</td><td>{{ (x.score*100)|number_format(1) }}%</td></tr>{% endfor %}</tbody></table>{% else %}<p class="meta">CLAP indisponible. Aucun style n'est inventé.</p>{% endif %}</div>
+<div class="card"><h2>Genre</h2>{% if t.available ?? false %}<table><thead><tr><th>Tag</th><th>Score</th></tr></thead><tbody>{% for x in t.genre ?? [] %}<tr><td>{{ x.label }}</td><td>{{ (x.score*100)|number_format(1) }}%</td></tr>{% endfor %}</tbody></table>{% else %}<p class="meta">CLAP indisponible. Aucun style n'est inventé.</p>{% endif %}</div>
 <div class="card"><h2>Instrumentation probable</h2>{% if t.available ?? false %}<table><thead><tr><th>Instrument</th><th>Score</th></tr></thead><tbody>{% for x in t.instrumentation ?? [] %}<tr><td>{{ x.label }}</td><td>{{ (x.score*100)|number_format(1) }}%</td></tr>{% endfor %}</tbody></table>{% else %}<p class="meta">Classifieur instrument non disponible.</p>{% endif %}</div>
 <div class="card"><h2>Voix</h2>{% if t.available ?? false %}<table><thead><tr><th>Caractéristique</th><th>Score</th></tr></thead><tbody>{% for x in t.voice ?? [] %}<tr><td>{{ x.label }}</td><td>{{ (x.score*100)|number_format(1) }}%</td></tr>{% endfor %}</tbody></table>{% else %}<p class="meta">Classifieur vocal non disponible.</p>{% endif %}</div>
 <div class="card"><h2>Ambiance / mood</h2>{% if t.available ?? false %}<table><thead><tr><th>Tag</th><th>Score</th></tr></thead><tbody>{% for x in t.mood ?? [] %}<tr><td>{{ x.label }}</td><td>{{ (x.score*100)|number_format(1) }}%</td></tr>{% endfor %}</tbody></table>{% else %}<p class="meta">Classifieur mood non disponible.</p>{% endif %}</div>
