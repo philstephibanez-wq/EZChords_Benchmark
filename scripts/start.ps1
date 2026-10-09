@@ -49,7 +49,7 @@ $env:EZSTUDIO_PASST_TORCH_HOME = Join-Path $runtimeRoot "cache\passt-torch-home"
 $env:PANNS_LABELS_CSV = Join-Path $runtimeRoot "deps\panns-data\class_labels_indices.csv"
 $env:EZSTUDIO_TORCH_HOME = Join-Path $runtimeRoot "cache\torch-home"
 $env:EZSTUDIO_STEMS_CACHE_ROOT = Join-Path $storageRoot "stems"
-$env:EZSTUDIO_OBSERVABILITY_ROOT = Join-Path $tmpRoot "observability"
+$env:EZSTUDIO_OBSERVABILITY_ROOT = Join-Path $logsRoot "observability"
 $env:EZSTUDIO_EXPORT_ROOT = Join-Path $storageRoot "exports"
 $env:EZSTUDIO_JOB_ROOT = Join-Path $tmpRoot "jobs"
 $env:KEEP_UPLOADS = "1"
@@ -73,10 +73,26 @@ if ($LASTEXITCODE -ne 0) {
     throw "DEV_CACHE_CLEAR_KO"
 }
 
-& $php `
-  -d upload_max_filesize=1G `
-  -d post_max_size=1100M `
-  -d max_execution_time=0 `
-  -S 127.0.0.1:8701 `
-  -t $public `
+$serverLog = Join-Path $logsRoot "php-server.log"
+Write-Host "SERVER=http://127.0.0.1:8701"
+Write-Host "SERVER_LOG=$serverLog"
+
+$serverArgs = @(
+  "-d", "upload_max_filesize=1G",
+  "-d", "post_max_size=1100M",
+  "-d", "max_execution_time=0",
+  "-S", "127.0.0.1:8701",
+  "-t", $public,
   $router
+)
+
+$serverOut = Join-Path $logsRoot "php-server.stdout.log"
+$serverErr = Join-Path $logsRoot "php-server.stderr.log"
+
+Start-Process `
+  -FilePath $php `
+  -ArgumentList $serverArgs `
+  -NoNewWindow `
+  -Wait `
+  -RedirectStandardOutput $serverOut `
+  -RedirectStandardError $serverErr

@@ -54,6 +54,17 @@ pre.log{background:#111820;color:#d9e0e7;padding:12px;overflow:auto;max-height:4
 @media(max-width:1050px){.pipeline{grid-template-columns:repeat(2,1fr)}.diagnostics-grid{grid-template-columns:1fr}}
 @media(max-width:650px){.pipeline{grid-template-columns:1fr}.header-inner{align-items:flex-start;flex-direction:column;gap:10px}}
 {% block styles %}{% endblock %}
+/* EZSTUDIO_R3B21B3_FIXED_LEFT_PERFORMANCE */
+:root{--ezs-perf-width:330px}
+.wrap{
+  max-width:none !important;
+  margin:18px 18px 0 calc(var(--ezs-perf-width) + 18px) !important;
+  padding:0 18px 40px !important;
+}
+@media(max-width:1050px){
+  :root{--ezs-perf-width:280px}
+}
+
 
 /* EZSTUDIO_NAV_ACTIVE_R3A3_CSS */
 .main-nav a.active,
@@ -68,6 +79,13 @@ pre.log{background:#111820;color:#d9e0e7;padding:12px;overflow:auto;max-height:4
 .main-nav a[aria-current="page"]:hover{
   background:#fff;
 }
+</style>
+  <link rel="stylesheet" href="/vendor/jquery-ui/jquery-ui.css">
+<style id="ezstudio-r3b22-layout">
+/* EZSTUDIO_R3B22_FIXED_LEFT_PERFORMANCE */
+:root{--ezs-perf-width:320px}
+.wrap{max-width:none!important;margin:18px 18px 0 calc(var(--ezs-perf-width) + 18px)!important;padding:0 18px 40px!important}
+@media(max-width:1050px){:root{--ezs-perf-width:280px}}
 </style>
 </head>
 <body>
@@ -101,7 +119,11 @@ pre.log{background:#111820;color:#d9e0e7;padding:12px;overflow:auto;max-height:4
 </nav>
 </div>
 </header>
+{% include '_gpu_monitor.html.twig' %}
 <div class="wrap">{% block body %}{% endblock %}</div>
 
+  <script src="/vendor/jquery/jquery-4.0.0.min.js"></script>
+  <script src="/vendor/jquery-ui/jquery-ui-1.14.2.min.js"></script>
+  <script src="/js/ezstudio-lab.js?v=r3b29"></script>
 </body>
 </html>

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections import defaultdict
+import math
 from typing import Any, Callable
 
 from gene import GeneContext, GeneSpec, run_gene
@@ -58,6 +59,32 @@ def _semantic_rows(
     return rows if isinstance(rows, list) else []
 
 
+def _temporal_row(
+    record: dict[str, Any],
+    family: str,
+    label: str,
+) -> dict[str, Any]:
+    raw = record.get("raw")
+    if not isinstance(raw, dict):
+        return {}
+    temporal = raw.get("temporal")
+    if not isinstance(temporal, dict):
+        return {}
+    family_rows = temporal.get(family)
+    if not isinstance(family_rows, dict):
+        return {}
+
+    direct = family_rows.get(label)
+    if isinstance(direct, dict):
+        return direct
+
+    wanted = label.casefold()
+    for key, value in family_rows.items():
+        if str(key).casefold() == wanted and isinstance(value, dict):
+            return value
+    return {}
+
+
 def build_consensus(records: list[dict[str, Any]]) -> dict[str, Any]:
     semantic_records = [
         record
@@ -65,6 +92,11 @@ def build_consensus(records: list[dict[str, Any]]) -> dict[str, Any]:
         if record.get("family") == "semantic"
         and record.get("status") == "ok"
     ]
+
+    semantic_by_id = {
+        str(record.get("id")): record
+        for record in semantic_records
+    }
 
     semantic: dict[str, Any] = {}
     for family in (
@@ -115,6 +147,127 @@ def build_consensus(records: list[dict[str, Any]]) -> dict[str, Any]:
                     for item in items
                 ],
             }
+
+            if family == "audioset" and len(items) >= 2:
+                source_evidence = []
+                for item in items:
+                    source_record = semantic_by_id.get(str(item["gene"]))
+                    if not isinstance(source_record, dict):
+                        continue
+                    temporal = _temporal_row(
+                        source_record,
+                        family,
+                        canonical,
+                    )
+                    rank = temporal.get("rank")
+                    top5_support = temporal.get("top5_support")
+                    top10_support = temporal.get("top10_support")
+                    if (
+                        rank is None
+                        or top5_support is None
+                        or top10_support is None
+                    ):
+                        continue
+
+                    rank_value = max(1, int(rank))
+                    top5 = max(0.0, min(1.0, float(top5_support)))
+                    top10 = max(0.0, min(1.0, float(top10_support)))
+
+                    rank_score = math.exp(
+                        -math.log(2.0)
+                        * float(rank_value - 1)
+                        / 9.0
+                    )
+                    temporal_score = math.sqrt(top5 * top10)
+                    engine_confidence = math.sqrt(
+                        rank_score * temporal_score
+                    )
+
+                    source_evidence.append(
+                        {
+                            "gene": item["gene"],
+                            "raw_score": round(float(item["score"]), 6),
+                            "rank": rank_value,
+                            "class_count": temporal.get("class_count"),
+                            "rank_score": round(rank_score, 6),
+                            "top5_support": round(top5, 6),
+                            "top10_support": round(top10, 6),
+                            "temporal_score": round(temporal_score, 6),
+                            "engine_confidence": round(
+                                engine_confidence,
+                                6,
+                            ),
+                        }
+                    )
+
+                confidence = (
+                    min(
+                        float(item["engine_confidence"])
+                        for item in source_evidence
+                    )
+                    if len(source_evidence) == len(items)
+                    else None
+                )
+
+                normalized_label = canonical.casefold()
+                generic_labels = {
+                    "music",
+                    "musical instrument",
+                    "song",
+                }
+                contextual_labels = {
+                    "christian music",
+                    "christmas music",
+                    "gospel music",
+                }
+
+                if normalized_label in generic_labels:
+                    semantic_role = "generic"
+                elif normalized_label in contextual_labels:
+                    semantic_role = "contextual_style"
+                else:
+                    semantic_role = "audioset_evidence"
+
+                informative = semantic_role == "audioset_evidence"
+                accepted = (
+                    informative
+                    and confidence is not None
+                    and confidence >= 0.60
+                )
+
+                row.update(
+                    {
+                        "confidence": (
+                            round(confidence, 6)
+                            if confidence is not None
+                            else None
+                        ),
+                        "confidence_method": (
+                            "min-cross-model-geomean"
+                            "(absolute-rank-decay,"
+                            "top5-top10-temporal)-v3"
+                        ),
+                        "confidence_threshold": 0.60,
+                        "calibrated": False,
+                        "semantic_role": semantic_role,
+                        "informative": informative,
+                        "source_evidence": source_evidence,
+                        "decision": (
+                            "accepted"
+                            if accepted
+                            else (
+                                "generic"
+                                if semantic_role == "generic"
+                                else (
+                                    "contextual"
+                                    if semantic_role == "contextual_style"
+                                    else "uncertain"
+                                )
+                            )
+                        ),
+                    }
+                )
+
             if len(items) >= 2:
                 agreements.append(row)
             else:
@@ -128,7 +281,7 @@ def build_consensus(records: list[dict[str, Any]]) -> dict[str, Any]:
         )
 
         if per_engine:
-            semantic[family] = {
+            payload = {
                 "method": (
                     "exact-label-agreement-"
                     "no-cross-engine-score-calibration"
@@ -137,6 +290,24 @@ def build_consensus(records: list[dict[str, Any]]) -> dict[str, Any]:
                 "divergences": divergences,
                 "per_engine": per_engine,
             }
+            if family == "audioset":
+                payload.update(
+                    {
+                        "confidence_method": (
+                            "min-cross-model-geomean"
+                            "(absolute-rank-decay,"
+                            "top5-top10-temporal)-v3"
+                        ),
+                        "confidence_threshold": 0.60,
+                        "calibrated": False,
+                        "accepted": [
+                            row
+                            for row in agreements
+                            if row.get("decision") == "accepted"
+                        ],
+                    }
+                )
+            semantic[family] = payload
 
     tonal_records = [
         record
@@ -196,5 +367,7 @@ def build_consensus(records: list[dict[str, Any]]) -> dict[str, Any]:
             "raw_and_normalized_outputs_are_preserved": True,
             "divergence_is_preserved": True,
             "embedding_vectors_are_not_averaged_across_models": True,
+            "confidence_is_not_calibrated_probability": True,
+            "semantic_acceptance_threshold": 0.60,
         },
     }

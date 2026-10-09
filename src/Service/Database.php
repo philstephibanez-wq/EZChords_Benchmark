@@ -28,6 +28,7 @@ final class Database
 
         $this->pdo = $pdo;
         $this->ensureSchema();
+        $this->ensureAnalysisResourceLockSchema();
 
         return $this->pdo;
     }
@@ -720,9 +721,19 @@ SQL;
         $pdo->exec('BEGIN IMMEDIATE');
         try {
             $row = $pdo->query(
-                "SELECT * FROM analysis_jobs
-                 WHERE status='queued'
-                 ORDER BY created_at ASC,id ASC
+                "SELECT * FROM analysis_jobs j
+                 WHERE j.status='queued'
+                   AND NOT EXISTS (
+                       SELECT 1
+                       FROM analysis_resource_locks l
+                       WHERE l.song_id=j.song_id
+                         AND l.expires_at_epoch > CAST(strftime('%s','now') AS INTEGER)
+                         AND l.region = CASE
+                             WHEN j.kind IN ('benchmark','chords','chords_scientific') THEN 'chords'
+                             ELSE j.kind
+                         END
+                   )
+                 ORDER BY j.created_at ASC,j.id ASC
                  LIMIT 1"
             )->fetch();
 
@@ -989,6 +1000,92 @@ SQL;
         }
     }
 
+    public function requestAnalysisJobCancellation(int $id): array
+    {
+        $job = $this->analysisJob($id);
+        if ($job === null) {
+            throw new \RuntimeException('job_not_found');
+        }
+
+        $status = (string)$job['status'];
+        if (!in_array($status, ['queued','running','cancelling'], true)) {
+            return $job;
+        }
+
+        $now = gmdate('c');
+        $pdo = $this->pdo();
+        $pdo->beginTransaction();
+        try {
+            if ($status === 'queued') {
+                $pdo->prepare(
+                    "UPDATE analysis_jobs
+                     SET status='cancelled',
+                         progress=0,
+                         error='cancelled_by_user_before_claim',
+                         updated_at=?
+                     WHERE id=? AND status='queued'"
+                )->execute([$now, $id]);
+
+                $this->markScientificRunCancelledFromJob(
+                    $job,
+                    'cancelled_by_user_before_claim',
+                    $now
+                );
+            } else {
+                $pdo->prepare(
+                    "UPDATE analysis_jobs
+                     SET status='cancelling',
+                         error='cancel_requested_by_user',
+                         updated_at=?
+                     WHERE id=? AND status IN ('running','cancelling')"
+                )->execute([$now, $id]);
+            }
+
+            $pdo->commit();
+        } catch (\Throwable $e) {
+            if ($pdo->inTransaction()) {
+                $pdo->rollBack();
+            }
+            throw $e;
+        }
+
+        return $this->analysisJob($id) ?? $job;
+    }
+
+    private function markScientificRunCancelledFromJob(
+        array $job,
+        string $reason,
+        string $now
+    ): void {
+        $scientificRunId = (int)($job['scientific_run_id'] ?? 0);
+        if ($scientificRunId <= 0) {
+            return;
+        }
+
+        $tables = $this->pdo()->query(
+            "SELECT name FROM sqlite_master WHERE type='table'"
+        )->fetchAll(PDO::FETCH_COLUMN);
+
+        if (!in_array('scientific_runs', $tables, true)) {
+            return;
+        }
+
+        $this->pdo()->prepare(
+            "UPDATE scientific_runs
+             SET state='cancelled', finished_at=?
+             WHERE id=? AND state!='done'"
+        )->execute([$now, $scientificRunId]);
+
+        if (in_array('scientific_run_labels', $tables, true)) {
+            $this->pdo()->prepare(
+                "INSERT INTO scientific_run_labels(run_id,label,value)
+                 VALUES(?,?,?)
+                 ON CONFLICT(run_id,label)
+                 DO UPDATE SET value=excluded.value"
+            )->execute([$scientificRunId, 'last_error', $reason]);
+        }
+    }
+
     public function markAnalysisJobCancelled(int $id): void
     {
         $job = $this->analysisJob($id);
@@ -1003,10 +1100,19 @@ SQL;
         $this->pdo()->prepare(
             "UPDATE analysis_jobs
              SET status='cancelled',
-                 error='catalog_delete_cancelled',
+                 error=CASE
+                     WHEN error='cancel_requested_by_user' THEN 'cancelled_by_user'
+                     ELSE 'catalog_delete_cancelled'
+                 END,
                  updated_at=?
              WHERE id=?"
         )->execute([$now, $id]);
+
+        $this->markScientificRunCancelledFromJob(
+            $job,
+            'cancelled_by_user_or_catalog',
+            $now
+        );
 
         if ($job['run_id'] !== null) {
             $run = $this->run((int)$job['run_id']);
@@ -1041,6 +1147,259 @@ SQL;
         );
         $stmt->execute($songIds);
         return $stmt->fetchAll();
+    }
+
+
+    private function ensureAnalysisResourceLockSchema(): void
+    {
+        $this->pdo->exec(<<<'SQL'
+CREATE TABLE IF NOT EXISTS analysis_resource_locks (
+    song_id INTEGER NOT NULL,
+    region TEXT NOT NULL,
+    operation TEXT NOT NULL,
+    owner TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    expires_at_epoch INTEGER NOT NULL,
+    PRIMARY KEY(song_id, region),
+    FOREIGN KEY(song_id) REFERENCES songs(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_analysis_resource_locks_owner
+ON analysis_resource_locks(owner);
+
+CREATE TRIGGER IF NOT EXISTS trg_analysis_jobs_region_lock_insert
+BEFORE INSERT ON analysis_jobs
+BEGIN
+    SELECT CASE WHEN EXISTS(
+        SELECT 1
+        FROM analysis_resource_locks l
+        WHERE l.song_id = NEW.song_id
+          AND l.expires_at_epoch > CAST(strftime('%s','now') AS INTEGER)
+          AND l.region = CASE
+              WHEN NEW.kind IN ('benchmark','chords','chords_scientific') THEN 'chords'
+              ELSE NEW.kind
+          END
+    ) THEN RAISE(ABORT, 'analysis_region_locked') END;
+END;
+
+CREATE TRIGGER IF NOT EXISTS trg_analysis_jobs_region_lock_claim
+BEFORE UPDATE OF status ON analysis_jobs
+WHEN NEW.status='running' AND OLD.status='queued'
+BEGIN
+    SELECT CASE WHEN EXISTS(
+        SELECT 1
+        FROM analysis_resource_locks l
+        WHERE l.song_id = NEW.song_id
+          AND l.expires_at_epoch > CAST(strftime('%s','now') AS INTEGER)
+          AND l.region = CASE
+              WHEN NEW.kind IN ('benchmark','chords','chords_scientific') THEN 'chords'
+              ELSE NEW.kind
+          END
+    ) THEN RAISE(ABORT, 'analysis_region_locked') END;
+END;
+SQL);
+    }
+
+    private function regionKindSql(string $alias = 'analysis_jobs'): string
+    {
+        return "CASE
+            WHEN {$alias}.kind IN ('benchmark','chords','chords_scientific') THEN 'chords'
+            ELSE {$alias}.kind
+        END";
+    }
+
+    public function acquireAnalysisRegionLocks(
+        array $songIds,
+        array $regions,
+        string $owner,
+        int $ttlSeconds = 300
+    ): void {
+        $songIds = array_values(array_unique(array_filter(
+            array_map('intval', $songIds),
+            static fn(int $id): bool => $id > 0
+        )));
+        $regions = array_values(array_unique(array_filter(
+            array_map('strval', $regions),
+            static fn(string $region): bool => in_array(
+                $region, ['profile','stems','chords','lyrics'], true
+            )
+        )));
+        if ($songIds === [] || $regions === []) {
+            throw new \InvalidArgumentException('analysis_region_lock_scope_empty');
+        }
+
+        $pdo = $this->pdo();
+        $nowEpoch = time();
+        $expires = $nowEpoch + max(60, $ttlSeconds);
+        $now = gmdate('c');
+
+        $pdo->exec('BEGIN IMMEDIATE');
+        try {
+            $pdo->prepare(
+                'DELETE FROM analysis_resource_locks WHERE expires_at_epoch <= ?'
+            )->execute([$nowEpoch]);
+
+            $insert = $pdo->prepare(
+                'INSERT INTO analysis_resource_locks(
+                    song_id,region,operation,owner,created_at,expires_at_epoch
+                 ) VALUES(?,?,?,?,?,?)'
+            );
+            foreach ($songIds as $songId) {
+                foreach ($regions as $region) {
+                    $insert->execute([
+                        $songId,
+                        $region,
+                        'delete',
+                        $owner,
+                        $now,
+                        $expires,
+                    ]);
+                }
+            }
+            $pdo->commit();
+        } catch (\PDOException $e) {
+            if ($pdo->inTransaction()) {
+                $pdo->rollBack();
+            }
+            throw new \RuntimeException(
+                'analysis_region_busy_or_locked:'.$e->getMessage(),
+                0,
+                $e
+            );
+        } catch (\Throwable $e) {
+            if ($pdo->inTransaction()) {
+                $pdo->rollBack();
+            }
+            throw $e;
+        }
+    }
+
+    public function releaseAnalysisRegionLocks(string $owner): void
+    {
+        $this->pdo()->prepare(
+            'DELETE FROM analysis_resource_locks WHERE owner=?'
+        )->execute([$owner]);
+    }
+
+    public function requestRegionCancellation(
+        array $songIds,
+        array $regions,
+        int $staleSeconds = 60
+    ): array {
+        $songIds = array_values(array_unique(array_filter(
+            array_map('intval', $songIds),
+            static fn(int $id): bool => $id > 0
+        )));
+        $regions = array_values(array_unique(array_map('strval', $regions)));
+        if ($songIds === [] || $regions === []) {
+            return [];
+        }
+
+        $songMarks = implode(',', array_fill(0, count($songIds), '?'));
+        $regionMarks = implode(',', array_fill(0, count($regions), '?'));
+        $regionExpr = $this->regionKindSql('analysis_jobs');
+        $pdo = $this->pdo();
+        $now = gmdate('c');
+        $cutoff = gmdate('c', time() - max(30, $staleSeconds));
+
+        $pdo->beginTransaction();
+        try {
+            $stmt = $pdo->prepare(
+                "UPDATE analysis_jobs
+                 SET status='cancelled',
+                     error='region_delete_cancelled_before_claim',
+                     updated_at=?
+                 WHERE song_id IN ($songMarks)
+                   AND $regionExpr IN ($regionMarks)
+                   AND status='queued'"
+            );
+            $stmt->execute([$now, ...$songIds, ...$regions]);
+
+            $stmt = $pdo->prepare(
+                "UPDATE analysis_jobs
+                 SET status='cancelled',
+                     error='region_delete_stale_job_reconciled',
+                     updated_at=?
+                 WHERE updated_at <= ?
+                   AND song_id IN ($songMarks)
+                   AND $regionExpr IN ($regionMarks)
+                   AND status IN ('running','cancelling')"
+            );
+            $stmt->execute([$now, $cutoff, ...$songIds, ...$regions]);
+
+            $stmt = $pdo->prepare(
+                "UPDATE analysis_jobs
+                 SET status='cancelling',
+                     error='region_delete_cancellation_requested',
+                     updated_at=?
+                 WHERE song_id IN ($songMarks)
+                   AND $regionExpr IN ($regionMarks)
+                   AND status='running'"
+            );
+            $stmt->execute([$now, ...$songIds, ...$regions]);
+
+            if ($this->tableExistsForMutex('scientific_runs')) {
+                $stmt = $pdo->prepare(
+                    "UPDATE scientific_runs
+                     SET state='cancelled',
+                         finished_at=COALESCE(finished_at, ?)
+                     WHERE id IN (
+                         SELECT scientific_run_id
+                         FROM analysis_jobs
+                         WHERE song_id IN ($songMarks)
+                           AND $regionExpr IN ($regionMarks)
+                           AND status='cancelled'
+                           AND scientific_run_id IS NOT NULL
+                     )
+                       AND state!='done'"
+                );
+                $stmt->execute([$now, ...$songIds, ...$regions]);
+            }
+
+            $pdo->commit();
+        } catch (\Throwable $e) {
+            if ($pdo->inTransaction()) {
+                $pdo->rollBack();
+            }
+            throw $e;
+        }
+
+        return $this->activeRegionJobs($songIds, $regions);
+    }
+
+    public function activeRegionJobs(array $songIds, array $regions): array
+    {
+        $songIds = array_values(array_unique(array_filter(
+            array_map('intval', $songIds),
+            static fn(int $id): bool => $id > 0
+        )));
+        $regions = array_values(array_unique(array_map('strval', $regions)));
+        if ($songIds === [] || $regions === []) {
+            return [];
+        }
+
+        $songMarks = implode(',', array_fill(0, count($songIds), '?'));
+        $regionMarks = implode(',', array_fill(0, count($regions), '?'));
+        $regionExpr = $this->regionKindSql('analysis_jobs');
+
+        $stmt = $this->pdo()->prepare(
+            "SELECT id,kind,status,progress,updated_at,scientific_run_id
+             FROM analysis_jobs
+             WHERE song_id IN ($songMarks)
+               AND $regionExpr IN ($regionMarks)
+               AND status IN ('queued','running','cancelling')
+             ORDER BY id"
+        );
+        $stmt->execute([...$songIds, ...$regions]);
+        return $stmt->fetchAll();
+    }
+
+    private function tableExistsForMutex(string $name): bool
+    {
+        $stmt = $this->pdo()->prepare(
+            "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name=?"
+        );
+        $stmt->execute([$name]);
+        return (int)$stmt->fetchColumn() > 0;
     }
 
     public function exportData(): array

@@ -4,6 +4,7 @@ namespace App\Controller;
 
 use App\Service\DnaRegistry;
 use App\Service\CatalogService;
+use App\Service\Database;
 use App\Service\WorkbenchCatalog;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\RedirectResponse;
@@ -43,6 +44,29 @@ final class WorkbenchController extends AbstractController
         return $this->render('workbench/home.html.twig', [
             'songs' => $catalog->songs(),
         ]);
+    }
+
+    #[Route('/analysis/jobs/{id<\d+>}/cancel', name: 'analysis_job_cancel', methods: ['POST'])]
+    public function cancelAnalysisJob(
+        int $id,
+        Request $request,
+        Database $db,
+    ): Response {
+        try {
+            $job = $db->requestAnalysisJobCancellation($id);
+        } catch (\RuntimeException $e) {
+            return new Response($e->getMessage(), 409);
+        }
+
+        if ($request->isXmlHttpRequest()) {
+            return $this->json([
+                'job_id' => (int)($job['id'] ?? $id),
+                'status' => (string)($job['status'] ?? ''),
+                'progress' => (int)($job['progress'] ?? 0),
+            ]);
+        }
+
+        return new RedirectResponse($this->generateUrl('workbench_home'));
     }
 
     #[Route('/import', name: 'workbench_import', methods: ['GET'])]

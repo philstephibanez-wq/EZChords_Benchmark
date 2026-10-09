@@ -24,6 +24,48 @@ def _chunks(
     return [y[int(start): int(start) + length] for start in starts]
 
 
+def _temporal_summary(
+    matrix: np.ndarray,
+    labels: list[str],
+    order: np.ndarray,
+    top_n: int = 25,
+) -> dict[str, dict]:
+    result: dict[str, dict] = {}
+    for index in order[:top_n]:
+        idx = int(index)
+        values = np.asarray(matrix[:, idx], dtype=np.float64)
+        per_chunk_order = np.argsort(matrix, axis=1)[:, ::-1]
+        top5_support = np.mean(
+            np.any(per_chunk_order[:, :5] == idx, axis=1)
+        )
+        top10_support = np.mean(
+            np.any(per_chunk_order[:, :10] == idx, axis=1)
+        )
+        mean_vector = np.mean(matrix, axis=0)
+        rank = int(np.where(np.argsort(mean_vector)[::-1] == idx)[0][0]) + 1
+        class_count = int(mean_vector.size)
+        rank_percentile = (
+            1.0
+            if class_count <= 1
+            else 1.0 - ((rank - 1) / float(class_count - 1))
+        )
+
+        result[labels[idx]] = {
+            "mean": round(float(np.mean(values)), 6),
+            "median": round(float(np.median(values)), 6),
+            "max": round(float(np.max(values)), 6),
+            "std": round(float(np.std(values)), 6),
+            "support_at_0_5": round(float(np.mean(values >= 0.5)), 6),
+            "top5_support": round(float(top5_support), 6),
+            "top10_support": round(float(top10_support), 6),
+            "rank": rank,
+            "class_count": class_count,
+            "rank_percentile": round(float(rank_percentile), 6),
+            "chunk_count": int(values.size),
+        }
+    return result
+
+
 def run(context: GeneContext) -> dict:
     prepare_profile_imports()
     try:
@@ -60,14 +102,20 @@ def run(context: GeneContext) -> dict:
         device="cuda",
     )
 
-    score_rows = []
-    embedding_rows = []
-    for chunk in _chunks(audio, 32000):
-        clipwise, embedding = tagger.inference(chunk[None, :])
-        score_rows.append(np.asarray(clipwise, dtype=np.float64)[0])
-        embedding_rows.append(np.asarray(embedding, dtype=np.float64)[0])
+    chunks = _chunks(audio, 32000)
+    batch = np.stack(chunks, axis=0).astype(np.float32, copy=False)
+    clipwise, embedding = tagger.inference(batch)
+    score_rows = [
+        np.asarray(row, dtype=np.float64)
+        for row in np.asarray(clipwise)
+    ]
+    embedding_rows = [
+        np.asarray(row, dtype=np.float64)
+        for row in np.asarray(embedding)
+    ]
 
-    scores = np.mean(np.stack(score_rows, axis=0), axis=0)
+    score_matrix = np.stack(score_rows, axis=0)
+    scores = np.mean(score_matrix, axis=0)
     embedding = np.mean(np.stack(embedding_rows, axis=0), axis=0)
     label_list = [str(item) for item in labels]
     if len(label_list) != len(scores):
@@ -94,6 +142,13 @@ def run(context: GeneContext) -> dict:
             ],
             "chunk_count": len(score_rows),
             "chunk_seconds": 10.0,
+            "temporal": {
+                "audioset": _temporal_summary(
+                    score_matrix,
+                    label_list,
+                    order,
+                ),
+            },
         },
         "normalized": {
             "audioset": top,

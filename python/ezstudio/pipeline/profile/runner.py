@@ -18,7 +18,6 @@ from genes import embedding_mert
 from genes import meter_chords_shared
 from genes import rhythm_librosa
 from genes import semantic_clap_open_vocab
-from genes import semantic_essentia_mtg
 from genes import semantic_panns
 from genes import semantic_passt
 from genes import tonal_ks
@@ -29,6 +28,10 @@ R3B14_PROFILE_REPAIR = True
 SCHEMA = "ezstudio.profile.v1"
 R3B15B_MADMOM_44100 = True
 R3B15_PROFILE_GENES = True
+R3B16_PROFILE_CONFIDENCE = True
+R3B17_PROFILE_CONFIDENCE_V2 = True
+R3B18_PROFILE_CONFIDENCE_V3 = True
+R3B19_PROFILE_SEMANTIC_ROLES = True
 
 
 def write_progress(path: Path, percent: int, message: str) -> None:
@@ -89,10 +92,6 @@ def _legacy_projection(
         gene_registry_result,
         "descriptors.librosa-lowlevel",
     )
-    essentia = _gene_by_id(
-        gene_registry_result,
-        "semantic.essentia-discogs-mtg",
-    )
     clap = _gene_by_id(
         gene_registry_result,
         "semantic.clap-open-vocabulary",
@@ -116,14 +115,9 @@ def _legacy_projection(
         "spectral": descriptors_n.get("spectral") or {},
     }
 
-    # Compatibility projection: existing consumers keep their former
-    # Essentia-first/CLAP-second "tagging" contract. Scientific truth is
-    # the pedalboard, where all semantic engines remain independent.
-    if essentia and essentia.get("status") == "ok":
-        tagging = _normalized(essentia)
-        tagging["available"] = True
-        tagging["backend"] = "essentia-discogs-effnet"
-    elif clap and clap.get("status") == "ok":
+    # Compatibility projection: CLAP remains the visible open-vocabulary
+    # tagging backend. Scientific truth stays in the independent gene outputs.
+    if clap and clap.get("status") == "ok":
         tagging = _normalized(clap)
         tagging["available"] = True
         tagging["backend"] = "clap-zero-shot"
@@ -210,6 +204,10 @@ def _profile_view(gene_registry_result: dict) -> dict:
         "tonal": consensus.get("tonal") or {},
         "audioset": {
             "method": audioset.get("method"),
+            "confidence_method": audioset.get("confidence_method"),
+            "confidence_threshold": audioset.get("confidence_threshold"),
+            "calibrated": bool(audioset.get("calibrated", False)),
+            "accepted": list(audioset.get("accepted") or [])[:25],
             "agreements": list(audioset.get("agreements") or [])[:25],
             "divergences": list(audioset.get("divergences") or [])[:25],
         },
@@ -336,18 +334,6 @@ def build_gene_registry(
                 parameters={"rolloff_percent": 0.85},
             ),
             descriptors_librosa.run,
-        )
-        .add(
-            GeneSpec(
-                gene_id="semantic.essentia-discogs-mtg",
-                display_name="Essentia Discogs + MTG",
-                family="semantic",
-                order=50,
-                engine="essentia",
-                model_id="discogs-effnet+mtg-jamendo",
-                model_path=str(profile_root),
-            ),
-            semantic_essentia_mtg.run,
         )
         .add(
             GeneSpec(
@@ -481,6 +467,7 @@ def main() -> int:
     source = Path(args.source).resolve()
     output = Path(args.output_path).resolve()
     progress = Path(args.progress_file).resolve()
+    os.environ["EZSTUDIO_PROFILE_OBSERVABILITY_SESSION"] = output.parent.name
     output.parent.mkdir(parents=True, exist_ok=True)
 
     write_progress(progress, 3, "PROFILE: chargement")
@@ -546,7 +533,7 @@ def main() -> int:
                 .get("source")
                 or ""
             ),
-            "profile_architecture": "genes-r3b15b",
+            "profile_architecture": "genes-r3b19",
             "profile_dependency_root": os.getenv(
                 "EZSTUDIO_PROFILE_DEP_ROOT",
                 r"H:\EZStudio_lab\var\runtime\deps\profile-r3b12",
@@ -555,7 +542,7 @@ def main() -> int:
         "automatic_next_stage": False,
     }
 
-    write_progress(progress, 96, "PROFILE: écriture ADN R3B15b")
+    write_progress(progress, 96, "PROFILE: écriture ADN R3B19")
     tmp = output.with_suffix(".tmp")
     tmp.write_text(
         json.dumps(result, ensure_ascii=False, indent=2),

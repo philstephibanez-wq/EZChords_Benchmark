@@ -10,6 +10,8 @@ from typing import Any, Callable
 
 import numpy as np
 
+from perf_probe import GenePerformanceProbe
+
 
 @dataclass(frozen=True)
 class GeneSpec:
@@ -97,6 +99,15 @@ def run_gene(
         "error": None,
     }
 
+    perf_probe = GenePerformanceProbe(
+        gene_id=spec.gene_id,
+        gene_name=spec.display_name,
+        family=spec.family,
+        device=spec.device,
+        audio_sha256=context.audio_sha256,
+    )
+    perf_probe.start()
+
     try:
         output = fn(context) or {}
         record["raw"] = output.get("raw")
@@ -119,9 +130,17 @@ def run_gene(
             "message": str(exc),
         }
     finally:
+        elapsed = round(time.perf_counter() - started, 4)
         record["timing"] = {
-            "elapsed_seconds": round(time.perf_counter() - started, 4),
+            "elapsed_seconds": elapsed,
         }
+        try:
+            perf_probe.finish(
+                status=str(record.get("status") or "error"),
+                elapsed_seconds=elapsed,
+            )
+        except Exception:
+            pass
         release_accelerator_memory()
 
     return record

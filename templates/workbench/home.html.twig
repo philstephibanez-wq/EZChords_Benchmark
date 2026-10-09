@@ -14,9 +14,10 @@
 .catalog-region-action{display:inline-flex;align-items:center;gap:2px}
 .catalog-trash{padding:.42rem .5rem;min-width:2rem}
 .catalog-zip-disabled{opacity:.45;pointer-events:none}
+.catalog-job-cancel{margin-left:6px;padding:.2rem .45rem;font-size:11px}
 </style>
 
-<div class="card">
+<div class="card" id="catalog-live-region">
 <table>
 <thead>
 <tr>
@@ -44,8 +45,12 @@
         <span class="badge ok">Prêt</span>
       {% elseif s.state == 'queued' %}
         <span class="badge" data-analysis-active="1">En attente{% if s.progress is not null %} · {{ s.progress }}%{% endif %}</span>
-      {% elseif s.state == 'running' %}
-        <span class="badge warn" data-analysis-active="1">En cours{% if s.progress is not null %} · {{ s.progress }}%{% endif %}</span>
+        {% if s.job_id %}<button type="button" class="secondary catalog-job-cancel" data-job-cancel-url="{{ path('analysis_job_cancel',{id:s.job_id}) }}" data-job-id="{{ s.job_id }}" title="Annuler le job #{{ s.job_id }}">■</button>{% endif %}
+      {% elseif s.state == 'running' or s.job_status == 'cancelling' %}
+        <span class="badge warn" data-analysis-active="1">{{ s.job_status == 'cancelling' ? 'Annulation…' : 'En cours' }}{% if s.progress is not null %} · {{ s.progress }}%{% endif %}</span>
+        {% if s.job_id %}<button type="button" class="secondary catalog-job-cancel" data-job-cancel-url="{{ path('analysis_job_cancel',{id:s.job_id}) }}" data-job-id="{{ s.job_id }}" title="Annuler le job #{{ s.job_id }}">■</button>{% endif %}
+      {% elseif s.state == 'cancelled' or s.job_status == 'cancelled' %}
+        <span class="badge">Annulé</span>
       {% elseif s.state == 'error' %}
         <span class="badge warn">Erreur</span>
       {% elseif s.state == 'configured' %}
@@ -121,58 +126,5 @@
 </tbody>
 </table>
 </div>
-
-<script>
-(() => {
-  for (const form of document.querySelectorAll('.catalog-delete-form')) {
-    form.addEventListener('submit', async (event) => {
-      event.preventDefault();
-
-      const button = form.querySelector('.catalog-delete-button');
-      const message = form.dataset.confirm || 'Confirmer la suppression ?';
-      if (!window.confirm(message)) return;
-
-      const originalText = button ? button.textContent : '';
-      if (button) {
-        button.disabled = true;
-        button.textContent = '…';
-        button.title = 'Suppression en cours';
-      }
-
-      try {
-        const response = await fetch(form.action, {
-          method: 'POST',
-          credentials: 'same-origin',
-          headers: {'X-Requested-With': 'XMLHttpRequest'}
-        });
-
-        if (response.redirected) {
-          window.location.assign(response.url);
-          return;
-        }
-        if (response.ok) {
-          window.location.reload();
-          return;
-        }
-
-        const body = (await response.text()).trim()
-          || `Suppression impossible (HTTP ${response.status})`;
-        window.alert(body);
-      } catch (error) {
-        window.alert(`Erreur de suppression : ${error}`);
-      } finally {
-        if (button && document.body.contains(button)) {
-          button.disabled = false;
-          button.textContent = originalText;
-        }
-      }
-    });
-  }
-
-  if (document.querySelector('[data-analysis-active="1"]')) {
-    window.setTimeout(() => window.location.reload(), 2500);
-  }
-})();
-</script>
 
 {% endblock %}

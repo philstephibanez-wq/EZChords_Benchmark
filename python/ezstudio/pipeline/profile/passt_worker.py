@@ -51,12 +51,18 @@ def main() -> int:
     model = load_model(mode="logits").to("cuda")
     model.eval()
 
+    chunks = _chunks(audio, 32000)
+    batch_size = max(1, int(os.getenv("EZSTUDIO_PASST_BATCH_SIZE", "2")))
     rows = []
     with torch.inference_mode():
-        for chunk in _chunks(audio, 32000):
-            logits = model(chunk.unsqueeze(0).to("cuda"))
-            probs = torch.sigmoid(logits).detach().float().cpu()[0]
-            rows.append(probs)
+        for start in range(0, len(chunks), batch_size):
+            batch = torch.stack(
+                chunks[start:start + batch_size],
+                dim=0,
+            ).to("cuda", non_blocking=True)
+            logits = model(batch)
+            probs = torch.sigmoid(logits).detach().float().cpu()
+            rows.extend(list(probs.unbind(0)))
 
     if not rows:
         raise RuntimeError("passt_no_chunks")
@@ -65,6 +71,10 @@ def main() -> int:
 
     result = {
         "scores": [float(value) for value in scores.tolist()],
+        "per_chunk_scores": [
+            [float(value) for value in row.tolist()]
+            for row in rows
+        ],
         "chunk_count": len(rows),
         "chunk_seconds": 10.0,
         "torch": torch.__version__,

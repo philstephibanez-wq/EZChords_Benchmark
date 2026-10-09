@@ -35,6 +35,50 @@ def _ensure_cached_checkpoint(
     return target
 
 
+def _temporal_summary(
+    matrix: np.ndarray,
+    labels: list[str],
+    order: np.ndarray,
+    top_n: int = 25,
+) -> dict[str, dict]:
+    if matrix.ndim != 2 or matrix.shape[1] != len(labels):
+        return {}
+    result: dict[str, dict] = {}
+    for index in order[:top_n]:
+        idx = int(index)
+        values = np.asarray(matrix[:, idx], dtype=np.float64)
+        per_chunk_order = np.argsort(matrix, axis=1)[:, ::-1]
+        top5_support = np.mean(
+            np.any(per_chunk_order[:, :5] == idx, axis=1)
+        )
+        top10_support = np.mean(
+            np.any(per_chunk_order[:, :10] == idx, axis=1)
+        )
+        mean_vector = np.mean(matrix, axis=0)
+        rank = int(np.where(np.argsort(mean_vector)[::-1] == idx)[0][0]) + 1
+        class_count = int(mean_vector.size)
+        rank_percentile = (
+            1.0
+            if class_count <= 1
+            else 1.0 - ((rank - 1) / float(class_count - 1))
+        )
+
+        result[labels[idx]] = {
+            "mean": round(float(np.mean(values)), 6),
+            "median": round(float(np.median(values)), 6),
+            "max": round(float(np.max(values)), 6),
+            "std": round(float(np.std(values)), 6),
+            "support_at_0_5": round(float(np.mean(values >= 0.5)), 6),
+            "top5_support": round(float(top5_support), 6),
+            "top10_support": round(float(top10_support), 6),
+            "rank": rank,
+            "class_count": class_count,
+            "rank_percentile": round(float(rank_percentile), 6),
+            "chunk_count": int(values.size),
+        }
+    return result
+
+
 def run(context: GeneContext) -> dict:
     prepare_profile_imports()
 
@@ -132,6 +176,10 @@ def run(context: GeneContext) -> dict:
         child = json.loads(output_path.read_text(encoding="utf-8"))
 
     scores = np.asarray(child.get("scores") or [], dtype=np.float64)
+    per_chunk_scores = np.asarray(
+        child.get("per_chunk_scores") or [],
+        dtype=np.float64,
+    )
     label_list = [str(item) for item in labels]
     if scores.size != len(label_list):
         raise RuntimeError(
@@ -156,6 +204,13 @@ def run(context: GeneContext) -> dict:
             },
             "chunk_count": int(child.get("chunk_count") or 0),
             "chunk_seconds": float(child.get("chunk_seconds") or 10.0),
+            "temporal": {
+                "audioset": _temporal_summary(
+                    per_chunk_scores,
+                    label_list,
+                    order,
+                ),
+            },
             "isolated_runtime": {
                 "python": str(passt_python),
                 "torch": child.get("torch"),

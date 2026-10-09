@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+import os
 import gc
 
 import numpy as np
@@ -70,12 +71,15 @@ def _run(context: GeneContext, model_dir: Path) -> dict:
     ).to("cuda")
     model.eval()
 
+    chunks = _chunks(audio, target_sr)
+    batch_size = max(1, int(os.getenv("EZSTUDIO_MERT_BATCH_SIZE", "2")))
     chunk_embeddings: list[list[float]] = []
     hidden_size = None
     with torch.inference_mode():
-        for chunk in _chunks(audio, target_sr):
+        for start in range(0, len(chunks), batch_size):
+            batch_chunks = chunks[start:start + batch_size]
             inputs = extractor(
-                chunk,
+                batch_chunks,
                 sampling_rate=target_sr,
                 return_tensors="pt",
                 padding=True,
@@ -83,18 +87,26 @@ def _run(context: GeneContext, model_dir: Path) -> dict:
             input_values = inputs["input_values"].to(
                 device="cuda",
                 dtype=torch.float32,
+                non_blocking=True,
             )
             with torch.autocast(
                 device_type="cuda",
                 dtype=torch.float16,
             ):
                 outputs = model(input_values)
-            hidden = outputs.last_hidden_state
-            pooled = hidden.float().mean(dim=1)[0].detach().cpu().numpy()
-            hidden_size = int(pooled.size)
-            chunk_embeddings.append(
-                [round(float(value), 7) for value in pooled]
+            pooled_batch = (
+                outputs.last_hidden_state
+                .float()
+                .mean(dim=1)
+                .detach()
+                .cpu()
+                .numpy()
             )
+            for pooled in pooled_batch:
+                hidden_size = int(pooled.size)
+                chunk_embeddings.append(
+                    [round(float(value), 7) for value in pooled]
+                )
 
     if not chunk_embeddings:
         raise RuntimeError("mert_no_embeddings")
@@ -127,6 +139,11 @@ def _run(context: GeneContext, model_dir: Path) -> dict:
             "inference_dtype": "cuda-autocast-float16",
         },
         "device": "cuda:0",
+        "performance": {
+            "batch_size": batch_size,
+            "chunk_count": len(chunks),
+            "inference_dtype": "cuda-autocast-float16",
+        },
     }
 
     del model

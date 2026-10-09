@@ -50,6 +50,28 @@
 <div>Durée</div><div>{% if p.duration_seconds is defined %}{{ p.duration_seconds|number_format(1) }} s{% else %}—{% endif %}</div>
 </div></div>
 
+{% if profile_summary %}
+<div class="card profile-summary">
+  <h2>Résumé français</h2>
+  <p style="font-size:14px;line-height:1.55;margin:0 0 12px">{{ profile_summary.text }}</p>
+  <div class="summary-grid">
+    <div><span>Tempo</span><strong>{% if profile_summary.tempo_bpm is not null %}{{ profile_summary.tempo_bpm|number_format(0) }} BPM · {{ profile_summary.tempo_qualifier }}{% else %}—{% endif %}</strong></div>
+    <div><span>Signature</span><strong>{{ profile_summary.meter ?? '—' }}</strong></div>
+    <div><span>Tonalité</span><strong>{{ profile_summary.key ?? '—' }}</strong></div>
+    <div><span>AudioSet retenu</span><strong>{{ profile_summary.audioset_accepted ? profile_summary.audioset_accepted|join(', ') : '—' }}</strong></div>
+  </div>
+  {% if profile_summary.genres %}<div class="summary-line"><strong>Genres suggérés</strong> · {% for x in profile_summary.genres %}{{ x.label }} ({{ (x.score*100)|number_format(1) }} %){% if not loop.last %}, {% endif %}{% endfor %}</div>{% endif %}
+  {% if profile_summary.moods %}<div class="summary-line"><strong>Ambiances</strong> · {% for x in profile_summary.moods %}{{ x.label }} ({{ (x.score*100)|number_format(1) }} %){% if not loop.last %}, {% endif %}{% endfor %}</div>{% endif %}
+  {% if profile_summary.instrumentation %}<div class="summary-line"><strong>Instrumentation probable</strong> · {% for x in profile_summary.instrumentation %}{{ x.label }} ({{ (x.score*100)|number_format(1) }} %){% if not loop.last %}, {% endif %}{% endfor %}</div>{% endif %}
+  {% if profile_summary.voice %}<div class="summary-line"><strong>Voix</strong> · {% for x in profile_summary.voice %}{{ x.label }} ({{ (x.score*100)|number_format(1) }} %){% if not loop.last %}, {% endif %}{% endfor %}</div>{% endif %}
+  {% if profile_summary.audioset_contextual %}<div class="summary-line"><strong>Labels contextuels conservés dans l’ADN</strong> · {{ profile_summary.audioset_contextual|join(', ') }}</div>{% endif %}
+  <div class="meta" style="margin-top:10px">{{ profile_summary.notice }}</div>
+</div>
+<style>
+.profile-summary .summary-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin-bottom:12px}.profile-summary .summary-grid>div{background:#f5f6f7;border:1px solid var(--line);border-radius:5px;padding:8px 10px}.profile-summary .summary-grid span{display:block;font-size:10px;color:var(--muted);margin-bottom:3px;text-transform:uppercase;letter-spacing:.05em}.profile-summary .summary-grid strong{font-size:13px}.profile-summary .summary-line{font-size:12px;line-height:1.55;padding:4px 0}@media(max-width:900px){.profile-summary .summary-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+</style>
+{% endif %}
+
 {% set pv = selected_profile_run.diagnostics.profile_view ?? {} %}
 {% set pc = pv.counts ?? {} %}
 {% set legacy_gene_key = 'ped' ~ 'als' %}
@@ -86,14 +108,39 @@
 
 {% if pv.audioset is defined and pv.audioset.agreements is defined %}
 <div class="card"><h2>Consensus AudioSet · PANNs / PaSST</h2>
-  <div class="meta">Accord de labels uniquement. Les probabilités des moteurs ne sont jamais moyennées entre elles.</div>
+  <div class="meta">Confidence opérationnelle non calibrée : décroissance exponentielle du rang absolu + persistance temporelle top-5/top-10, puis minimum entre PANNs et PaSST. Seuil de décision 60 %. Les labels génériques restent visibles mais ne sont pas retenus. Ce pourcentage n'est pas une probabilité calibrée.</div>
   {% if pv.audioset.agreements %}
-  <table><thead><tr><th>Label</th><th>Support</th><th>Scores source</th></tr></thead><tbody>
+  <table><thead><tr><th>Label</th><th>Support</th><th>Scores source</th><th>Confidence</th><th>Stabilité</th><th>Décision</th></tr></thead><tbody>
   {% for a in pv.audioset.agreements %}
     <tr>
       <td>{{ a.label }}</td>
       <td>{{ a.support }}</td>
       <td>{% for s in a.sources ?? [] %}{% set legacy_source_key = 'ped' ~ 'al' %}{{ s.gene ?? attribute(s, legacy_source_key) ?? '—' }}={{ (s.score*100)|number_format(1) }}%{% if not loop.last %} · {% endif %}{% endfor %}</td>
+      <td>{% if a.confidence is defined and a.confidence is not null %}{{ (a.confidence*100)|number_format(1) }}%{% else %}—{% endif %}</td>
+      <td>
+        {% if a.source_evidence is defined and a.source_evidence %}
+          {% for e in a.source_evidence %}
+            {{ e.gene }} : rang {{ e.rank ?? '—' }}/{{ e.class_count ?? '—' }}, rang-score {% if e.rank_score is defined %}{{ (e.rank_score*100)|number_format(0) }}%{% else %}—{% endif %}, top-5 {% if e.top5_support is defined %}{{ (e.top5_support*100)|number_format(0) }}%{% else %}—{% endif %}, top-10 {{ (e.top10_support*100)|number_format(0) }}%{% if not loop.last %}<br>{% endif %}
+          {% endfor %}
+        {% elseif a.temporal_support_min is defined and a.temporal_support_min is not null %}
+          {{ (a.temporal_support_min*100)|number_format(0) }}%
+        {% else %}
+          —
+        {% endif %}
+      </td>
+      <td>
+        {% if a.decision is defined and a.decision == 'accepted' %}
+          <span class="badge ok">retenu</span>
+        {% elseif a.decision is defined and a.decision == 'contextual' %}
+          <span class="badge">contextuel</span>
+        {% elseif a.decision is defined and a.decision == 'generic' %}
+          <span class="badge">générique</span>
+        {% elseif a.decision is defined %}
+          <span class="badge">incertain</span>
+        {% else %}
+          —
+        {% endif %}
+      </td>
     </tr>
   {% endfor %}
   </tbody></table>
@@ -112,12 +159,59 @@
 {% endif %}
 
 <div class="card"><div class="meta">Moteur sémantique : {{ t.backend ?? 'indisponible' }}{% if t.model is defined %} · {{ t.model }}{% endif %}. Les scores CLAP sont relatifs à la taxonomie comparée, pas des probabilités calibrées.</div></div>
-<div class="card"><h2>Style / genre</h2>{% if t.available ?? false %}<table><thead><tr><th>Tag</th><th>Score</th></tr></thead><tbody>{% for x in t.genre ?? [] %}<tr><td>{{ x.label }}</td><td>{{ (x.score*100)|number_format(1) }}%</td></tr>{% endfor %}</tbody></table>{% else %}<p class="meta">Classifieur MTG/Essentia non disponible. Aucun style n'est inventé.</p>{% endif %}</div>
+<div class="card"><h2>Style / genre</h2>{% if t.available ?? false %}<table><thead><tr><th>Tag</th><th>Score</th></tr></thead><tbody>{% for x in t.genre ?? [] %}<tr><td>{{ x.label }}</td><td>{{ (x.score*100)|number_format(1) }}%</td></tr>{% endfor %}</tbody></table>{% else %}<p class="meta">CLAP indisponible. Aucun style n'est inventé.</p>{% endif %}</div>
 <div class="card"><h2>Instrumentation probable</h2>{% if t.available ?? false %}<table><thead><tr><th>Instrument</th><th>Score</th></tr></thead><tbody>{% for x in t.instrumentation ?? [] %}<tr><td>{{ x.label }}</td><td>{{ (x.score*100)|number_format(1) }}%</td></tr>{% endfor %}</tbody></table>{% else %}<p class="meta">Classifieur instrument non disponible.</p>{% endif %}</div>
 <div class="card"><h2>Voix</h2>{% if t.available ?? false %}<table><thead><tr><th>Caractéristique</th><th>Score</th></tr></thead><tbody>{% for x in t.voice ?? [] %}<tr><td>{{ x.label }}</td><td>{{ (x.score*100)|number_format(1) }}%</td></tr>{% endfor %}</tbody></table>{% else %}<p class="meta">Classifieur vocal non disponible.</p>{% endif %}</div>
 <div class="card"><h2>Ambiance / mood</h2>{% if t.available ?? false %}<table><thead><tr><th>Tag</th><th>Score</th></tr></thead><tbody>{% for x in t.mood ?? [] %}<tr><td>{{ x.label }}</td><td>{{ (x.score*100)|number_format(1) }}%</td></tr>{% endfor %}</tbody></table>{% else %}<p class="meta">Classifieur mood non disponible.</p>{% endif %}</div>
 <div class="card"><a class="button secondary" href="{{ path('dna_run',{id:selected_profile_run.id}) }}">Run ADN PROFILE</a> <a class="button" href="{{ path('workbench_stems',{song:selected_song.id}) }}">Ouvrir STEMS</a> <span class="meta">Navigation uniquement.</span></div>
-{% if profile_active %}<script>setTimeout(()=>location.reload(),2500);</script>{% endif %}
+{% if profile_active %}
+<div data-profile-live-refresh="1" hidden></div>
+<script>
+(() => {
+  const marker = document.querySelector('[data-profile-live-refresh="1"]');
+  if (!marker || window.__ezstudioProfileLiveRefresh) return;
+  window.__ezstudioProfileLiveRefresh = true;
+
+  let stopped = false;
+
+  async function refreshProfileContent() {
+    if (stopped) return;
+
+    try {
+      const response = await fetch(window.location.href, {
+        cache: 'no-store',
+        headers: {'Accept': 'text/html'}
+      });
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+
+      const html = await response.text();
+      const doc = new DOMParser().parseFromString(html, 'text/html');
+      const nextWrap = doc.querySelector('.wrap');
+      const currentWrap = document.querySelector('.wrap');
+
+      if (!nextWrap || !currentWrap) {
+        throw new Error('profile_wrap_missing');
+      }
+
+      const stillActive = !!nextWrap.querySelector('[data-profile-live-refresh="1"]');
+      currentWrap.innerHTML = nextWrap.innerHTML;
+
+      if (stillActive) {
+        window.setTimeout(refreshProfileContent, 2500);
+      } else {
+        stopped = true;
+        window.__ezstudioProfileLiveRefresh = false;
+      }
+    } catch (error) {
+      window.setTimeout(refreshProfileContent, 2500);
+    }
+  }
+
+  window.addEventListener('pagehide', () => { stopped = true; }, {once:true});
+  window.setTimeout(refreshProfileContent, 2500);
+})();
+</script>
+{% endif %}
 {% endif %}
 {% endif %}
 {% endblock %}

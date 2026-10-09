@@ -22,6 +22,7 @@ def run(context: GeneContext) -> dict:
             "chunks": result.get("chunks"),
             "chunk_seconds": result.get("chunk_seconds"),
             "score_semantics": result.get("score_semantics"),
+            "temporal": result.get("temporal") or {},
         },
         "normalized": normalized,
         "warnings": warnings,

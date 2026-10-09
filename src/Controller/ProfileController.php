@@ -4,6 +4,7 @@ namespace App\Controller;
 
 use App\Service\DnaRegistry;
 use App\Service\ProfileDnaExecutionService;
+use App\Service\ProfileFrenchSummary;
 use App\Service\WorkbenchCatalog;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\RedirectResponse;
@@ -20,7 +21,7 @@ final class ProfileController extends AbstractController
     }
 
     #[Route('/workbench/profile', name: 'workbench_profile', methods: ['GET'])]
-    public function index(Request $request, WorkbenchCatalog $catalog, DnaRegistry $dna, ProfileDnaExecutionService $execution): Response
+    public function index(Request $request, WorkbenchCatalog $catalog, DnaRegistry $dna, ProfileDnaExecutionService $execution, ProfileFrenchSummary $summary): Response
     {
         $song = $catalog->selectedSong($this->songId($request));
         $runs = [];
@@ -57,6 +58,7 @@ final class ProfileController extends AbstractController
             'profile_runs' => $runs,
             'selected_profile_run' => $selected,
             'profile_job' => $selected ? $execution->jobForRun((int)$selected['id']) : null,
+            'profile_summary' => $selected ? $summary->build($selected) : null,
         ]);
     }
 
@@ -75,7 +77,7 @@ final class ProfileController extends AbstractController
         $run = $dna->createRun(
             (int)$song['id'],
             'profile',
-            ['name' => 'ezstudio-profile-genes', 'version' => 'r3b15b', 'model' => 'multi-engine-profile-genes'],
+            ['name' => 'ezstudio-profile-genes', 'version' => 'r3b19', 'model' => 'multi-engine-profile-genes'],
             [
                 'audio_sha256' => (string)$song['audio_sha256'],
                 'output_contract' => 'ezstudio.profile.v1',

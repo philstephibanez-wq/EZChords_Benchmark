@@ -126,6 +126,46 @@ def _family_scores(
     return rows
 
 
+def _temporal_family_summary(
+    chunk_logits: list[np.ndarray],
+    index: list[tuple[str, str]],
+    family: str,
+    labels: list[str],
+) -> dict[str, dict]:
+    positions = [i for i, item in enumerate(index) if item[0] == family]
+    if not positions or not chunk_logits:
+        return {}
+
+    family_labels = [index[i][1] for i in positions]
+    wanted = set(labels)
+    rows: dict[str, list[float]] = {label: [] for label in labels}
+
+    for logits in chunk_logits:
+        values = np.asarray([logits[i] for i in positions], dtype=np.float64)
+        values = values - np.max(values)
+        probs = np.exp(values)
+        probs /= np.sum(probs) + 1e-12
+        for label, value in zip(family_labels, probs):
+            if label in wanted:
+                rows[label].append(float(value))
+
+    result: dict[str, dict] = {}
+    for label, values_list in rows.items():
+        if not values_list:
+            continue
+        values = np.asarray(values_list, dtype=np.float64)
+        result[label] = {
+            "mean": round(float(np.mean(values)), 6),
+            "median": round(float(np.median(values)), 6),
+            "max": round(float(np.max(values)), 6),
+            "std": round(float(np.std(values)), 6),
+            "support_at_0_5": round(float(np.mean(values >= 0.5)), 6),
+            "chunk_count": int(values.size),
+            "score_semantics": "category_relative_softmax",
+        }
+    return result
+
+
 def clap_tags(source: Path, model_root: Path) -> tuple[dict, list[str]]:
     result = {
         "available": False,
@@ -176,6 +216,7 @@ def clap_tags(source: Path, model_root: Path) -> tuple[dict, list[str]]:
 
         prompts, index = _prompts()
         accumulated = None
+        chunk_logits: list[np.ndarray] = []
 
         with torch.inference_mode():
             for chunk in chunks:
@@ -194,6 +235,7 @@ def clap_tags(source: Path, model_root: Path) -> tuple[dict, list[str]]:
                 logits = (
                     output.logits_per_audio.detach().float().cpu().numpy()[0]
                 )
+                chunk_logits.append(logits)
                 accumulated = logits if accumulated is None else accumulated + logits
 
         if accumulated is None:
@@ -208,6 +250,15 @@ def clap_tags(source: Path, model_root: Path) -> tuple[dict, list[str]]:
         )
         result["mood"] = _family_scores(mean_logits, index, "mood", 8)
         result["voice"] = _family_scores(mean_logits, index, "voice", 8)
+        result["temporal"] = {
+            family: _temporal_family_summary(
+                chunk_logits,
+                index,
+                family,
+                [row["label"] for row in result[family]],
+            )
+            for family in ("genre", "instrumentation", "mood", "voice")
+        }
         result["available"] = True
         result["chunks"] = len(chunks)
         result["chunk_seconds"] = 10.0

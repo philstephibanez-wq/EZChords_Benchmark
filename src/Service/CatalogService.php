@@ -73,93 +73,370 @@ final class CatalogService
     {
         $order = ['profile', 'stems', 'chords', 'lyrics'];
         $offset = array_search($region, $order, true);
-        if ($offset === false) throw new \InvalidArgumentException('catalog_invalid_region');
+        if ($offset === false) {
+            throw new \InvalidArgumentException('catalog_invalid_region');
+        }
+
         $targets = array_slice($order, (int)$offset);
 
-        $stmt = $this->db->pdo()->prepare('SELECT id,title,artist,audio_sha256 FROM songs WHERE id=?');
+        $stmt = $this->db->pdo()->prepare(
+            'SELECT id,title,artist,audio_sha256 FROM songs WHERE id=?'
+        );
         $stmt->execute([$songId]);
         $seed = $stmt->fetch();
-        if (!$seed) throw new \RuntimeException('catalog_song_not_found');
+        if (!$seed) {
+            throw new \RuntimeException('catalog_song_not_found');
+        }
 
         $hash = trim((string)$seed['audio_sha256']);
+
         if ($hash !== '') {
-            $stmt = $this->db->pdo()->prepare('SELECT id FROM songs WHERE audio_sha256=? ORDER BY id');
+            $stmt = $this->db->pdo()->prepare(
+                'SELECT id FROM songs WHERE audio_sha256=? ORDER BY id'
+            );
             $stmt->execute([$hash]);
-            $songIds = array_map(static fn(array $r): int => (int)$r['id'], $stmt->fetchAll());
+            $songIds = array_map(
+                static fn(array $row): int => (int)$row['id'],
+                $stmt->fetchAll()
+            );
         } else {
             $songIds = [$songId];
         }
 
-        $active = $this->db->activeOrCancellingAnalysisJobsForSongs($songIds);
-        if ($active !== []) {
-            $ids = implode(',', array_map(static fn(array $r): string => (string)$r['id'], $active));
-            throw new \RuntimeException('catalog_region_has_active_jobs:jobs='.$ids);
-        }
+        $owner = 'catalog-delete-region-'
+            .$songId.'-'.$region.'-'.bin2hex(random_bytes(8));
 
-        $marks = implode(',', array_fill(0, count($songIds), '?'));
-        $targetMarks = implode(',', array_fill(0, count($targets), '?'));
-        $scientificRunIds = [];
-        if ($this->tableExists('scientific_runs')) {
-            $stmt = $this->db->pdo()->prepare("SELECT id FROM scientific_runs WHERE song_id IN ($marks) AND item IN ($targetMarks)");
-            $i = 1;
-            foreach ($songIds as $id) $stmt->bindValue($i++, $id, PDO::PARAM_INT);
-            foreach ($targets as $item) $stmt->bindValue($i++, $item, PDO::PARAM_STR);
-            $stmt->execute();
-            $scientificRunIds = array_map(static fn(array $r): int => (int)$r['id'], $stmt->fetchAll());
-        }
+        $this->db->acquireAnalysisRegionLocks(
+            $songIds,
+            $targets,
+            $owner,
+            300
+        );
 
-        $files = [];
-        if ($scientificRunIds !== []) {
-            $runMarks = implode(',', array_fill(0, count($scientificRunIds), '?'));
-            $stmt = $this->db->pdo()->prepare("SELECT COUNT(*) FROM scientific_run_parents WHERE parent_run_id IN ($runMarks) AND child_run_id NOT IN ($runMarks)");
-            $i=1; foreach ($scientificRunIds as $id) $stmt->bindValue($i++,$id,PDO::PARAM_INT); foreach ($scientificRunIds as $id) $stmt->bindValue($i++,$id,PDO::PARAM_INT); $stmt->execute();
-            if ((int)$stmt->fetchColumn() > 0) throw new \RuntimeException('catalog_region_has_external_child_runs');
-
-            $stmt = $this->db->pdo()->prepare("SELECT COUNT(*) FROM scientific_run_inputs i JOIN scientific_artifacts a ON a.artifact_id=i.artifact_id WHERE a.run_id IN ($runMarks) AND i.run_id NOT IN ($runMarks)");
-            $i=1; foreach ($scientificRunIds as $id) $stmt->bindValue($i++,$id,PDO::PARAM_INT); foreach ($scientificRunIds as $id) $stmt->bindValue($i++,$id,PDO::PARAM_INT); $stmt->execute();
-            if ((int)$stmt->fetchColumn() > 0) throw new \RuntimeException('catalog_region_artifacts_still_used');
-
-            $stmt = $this->db->pdo()->prepare("SELECT path FROM scientific_artifacts WHERE run_id IN ($runMarks)");
-            $this->bindIds($stmt, $scientificRunIds); $stmt->execute();
-            foreach ($stmt->fetchAll() as $r) { $p=trim((string)($r['path']??'')); if ($p!=='') $files[$p]=true; }
-        }
-
-        $stmt = $this->db->pdo()->prepare("SELECT id FROM analysis_jobs WHERE song_id IN ($marks) AND kind IN ($targetMarks)");
-        $i=1; foreach ($songIds as $id) $stmt->bindValue($i++,$id,PDO::PARAM_INT); foreach ($targets as $item) $stmt->bindValue($i++,$item,PDO::PARAM_STR); $stmt->execute();
-        $jobIds = array_map(static fn(array $r): int => (int)$r['id'], $stmt->fetchAll());
-
-        $benchmarkRunIds = [];
-        if (in_array('chords', $targets, true)) {
-            $stmt = $this->db->pdo()->prepare("SELECT id FROM benchmark_runs WHERE song_id IN ($marks)");
-            $this->bindIds($stmt, $songIds); $stmt->execute();
-            $benchmarkRunIds = array_map(static fn(array $r): int => (int)$r['id'], $stmt->fetchAll());
-        }
-
-        $pdo = $this->db->pdo();
-        $pdo->beginTransaction();
         try {
-            if ($scientificRunIds !== []) {
-                $runMarks = implode(',', array_fill(0, count($scientificRunIds), '?'));
-                $stmt = $pdo->prepare("DELETE FROM scientific_run_inputs WHERE run_id IN ($runMarks) OR artifact_id IN (SELECT artifact_id FROM scientific_artifacts WHERE run_id IN ($runMarks))");
-                $i=1; foreach ($scientificRunIds as $id) $stmt->bindValue($i++,$id,PDO::PARAM_INT); foreach ($scientificRunIds as $id) $stmt->bindValue($i++,$id,PDO::PARAM_INT); $stmt->execute();
-                $stmt = $pdo->prepare("DELETE FROM scientific_run_parents WHERE child_run_id IN ($runMarks) OR parent_run_id IN ($runMarks)");
-                $i=1; foreach ($scientificRunIds as $id) $stmt->bindValue($i++,$id,PDO::PARAM_INT); foreach ($scientificRunIds as $id) $stmt->bindValue($i++,$id,PDO::PARAM_INT); $stmt->execute();
+            $active = $this->db->requestRegionCancellation(
+                $songIds,
+                $targets,
+                60
+            );
+
+            if ($active !== []) {
+                $ids = implode(',', array_map(
+                    static fn(array $row): string => (string)$row['id'],
+                    $active
+                ));
+                throw new \RuntimeException(
+                    'catalog_region_cancel_pending:jobs='.$ids
+                );
             }
-            if ($jobIds !== []) { $m=implode(',',array_fill(0,count($jobIds),'?')); $stmt=$pdo->prepare("DELETE FROM analysis_jobs WHERE id IN ($m)"); $this->bindIds($stmt,$jobIds); $stmt->execute(); }
-            if ($scientificRunIds !== []) { $m=implode(',',array_fill(0,count($scientificRunIds),'?')); $stmt=$pdo->prepare("DELETE FROM scientific_runs WHERE id IN ($m)"); $this->bindIds($stmt,$scientificRunIds); $stmt->execute(); }
-            if ($benchmarkRunIds !== []) { $m=implode(',',array_fill(0,count($benchmarkRunIds),'?')); $stmt=$pdo->prepare("DELETE FROM benchmark_runs WHERE id IN ($m)"); $this->bindIds($stmt,$benchmarkRunIds); $stmt->execute(); }
-            $pdo->commit();
-        } catch (\Throwable $e) { if ($pdo->inTransaction()) $pdo->rollBack(); throw $e; }
 
-        foreach (array_keys($files) as $path) if (is_file($path)) @unlink($path);
-        $projectRoot = dirname(__DIR__, 2);
-        $storageRoot = rtrim((string)(getenv('EZSTUDIO_STORAGE_ROOT') ?: $projectRoot.DIRECTORY_SEPARATOR.'var'.DIRECTORY_SEPARATOR.'storage'), '\\/');
-        $tmpRoot = rtrim((string)(getenv('EZSTUDIO_TMP_ROOT') ?: $projectRoot.DIRECTORY_SEPARATOR.'var'.DIRECTORY_SEPARATOR.'tmp'), '\\/');
-        if ($hash !== '') foreach ($targets as $item) $this->removeTree($storageRoot.DIRECTORY_SEPARATOR.$item.DIRECTORY_SEPARATOR.$hash);
-        foreach ($jobIds as $jobId) $this->removeTree($tmpRoot.DIRECTORY_SEPARATOR.'jobs'.DIRECTORY_SEPARATOR.(string)$jobId);
-        foreach ($benchmarkRunIds as $runId) foreach (glob($projectRoot.DIRECTORY_SEPARATOR.'results'.DIRECTORY_SEPARATOR.sprintf('run-%06d-*',$runId)) ?: [] as $path) $this->removeTree($path);
+            $marks = implode(',', array_fill(0, count($songIds), '?'));
+            $targetMarks = implode(',', array_fill(0, count($targets), '?'));
 
-        return ['song_ids'=>$songIds,'audio_sha256'=>$hash,'deleted_regions'=>$targets];
+            $scientificRunIds = [];
+            if ($this->tableExists('scientific_runs')) {
+                $stmt = $this->db->pdo()->prepare(
+                    "SELECT id
+                     FROM scientific_runs
+                     WHERE song_id IN ($marks)
+                       AND item IN ($targetMarks)"
+                );
+
+                $i = 1;
+                foreach ($songIds as $id) {
+                    $stmt->bindValue($i++, $id, PDO::PARAM_INT);
+                }
+                foreach ($targets as $item) {
+                    $stmt->bindValue($i++, $item, PDO::PARAM_STR);
+                }
+                $stmt->execute();
+
+                $scientificRunIds = array_map(
+                    static fn(array $row): int => (int)$row['id'],
+                    $stmt->fetchAll()
+                );
+            }
+
+            $files = [];
+
+            if ($scientificRunIds !== []) {
+                $runMarks = implode(
+                    ',',
+                    array_fill(0, count($scientificRunIds), '?')
+                );
+
+                $stmt = $this->db->pdo()->prepare(
+                    "SELECT COUNT(*)
+                     FROM scientific_run_parents
+                     WHERE parent_run_id IN ($runMarks)
+                       AND child_run_id NOT IN ($runMarks)"
+                );
+                $i = 1;
+                foreach ($scientificRunIds as $id) {
+                    $stmt->bindValue($i++, $id, PDO::PARAM_INT);
+                }
+                foreach ($scientificRunIds as $id) {
+                    $stmt->bindValue($i++, $id, PDO::PARAM_INT);
+                }
+                $stmt->execute();
+
+                if ((int)$stmt->fetchColumn() > 0) {
+                    throw new \RuntimeException(
+                        'catalog_region_has_external_child_runs'
+                    );
+                }
+
+                $stmt = $this->db->pdo()->prepare(
+                    "SELECT COUNT(*)
+                     FROM scientific_run_inputs i
+                     JOIN scientific_artifacts a
+                       ON a.artifact_id=i.artifact_id
+                     WHERE a.run_id IN ($runMarks)
+                       AND i.run_id NOT IN ($runMarks)"
+                );
+                $i = 1;
+                foreach ($scientificRunIds as $id) {
+                    $stmt->bindValue($i++, $id, PDO::PARAM_INT);
+                }
+                foreach ($scientificRunIds as $id) {
+                    $stmt->bindValue($i++, $id, PDO::PARAM_INT);
+                }
+                $stmt->execute();
+
+                if ((int)$stmt->fetchColumn() > 0) {
+                    throw new \RuntimeException(
+                        'catalog_region_artifacts_still_used'
+                    );
+                }
+
+                $stmt = $this->db->pdo()->prepare(
+                    "SELECT path
+                     FROM scientific_artifacts
+                     WHERE run_id IN ($runMarks)"
+                );
+                $this->bindIds($stmt, $scientificRunIds);
+                $stmt->execute();
+
+                foreach ($stmt->fetchAll() as $row) {
+                    $path = trim((string)($row['path'] ?? ''));
+                    if ($path !== '') {
+                        $files[$path] = true;
+                    }
+                }
+            }
+
+            $jobKinds = [];
+            foreach ($targets as $target) {
+                if ($target === 'chords') {
+                    foreach (['benchmark', 'chords', 'chords_scientific'] as $kind) {
+                        $jobKinds[$kind] = true;
+                    }
+                } else {
+                    $jobKinds[$target] = true;
+                }
+            }
+            $jobKinds = array_keys($jobKinds);
+
+            $jobIds = [];
+            if ($jobKinds !== []) {
+                $jobKindMarks = implode(
+                    ',',
+                    array_fill(0, count($jobKinds), '?')
+                );
+
+                $stmt = $this->db->pdo()->prepare(
+                    "SELECT id
+                     FROM analysis_jobs
+                     WHERE song_id IN ($marks)
+                       AND kind IN ($jobKindMarks)"
+                );
+
+                $i = 1;
+                foreach ($songIds as $id) {
+                    $stmt->bindValue($i++, $id, PDO::PARAM_INT);
+                }
+                foreach ($jobKinds as $kind) {
+                    $stmt->bindValue($i++, $kind, PDO::PARAM_STR);
+                }
+                $stmt->execute();
+
+                $jobIds = array_map(
+                    static fn(array $row): int => (int)$row['id'],
+                    $stmt->fetchAll()
+                );
+            }
+
+            $benchmarkRunIds = [];
+            if (in_array('chords', $targets, true)) {
+                $stmt = $this->db->pdo()->prepare(
+                    "SELECT id
+                     FROM benchmark_runs
+                     WHERE song_id IN ($marks)"
+                );
+                $this->bindIds($stmt, $songIds);
+                $stmt->execute();
+
+                $benchmarkRunIds = array_map(
+                    static fn(array $row): int => (int)$row['id'],
+                    $stmt->fetchAll()
+                );
+            }
+
+            $pdo = $this->db->pdo();
+            $pdo->beginTransaction();
+
+            try {
+                if ($scientificRunIds !== []) {
+                    $runMarks = implode(
+                        ',',
+                        array_fill(0, count($scientificRunIds), '?')
+                    );
+
+                    $stmt = $pdo->prepare(
+                        "DELETE FROM scientific_run_inputs
+                         WHERE run_id IN ($runMarks)
+                            OR artifact_id IN (
+                                SELECT artifact_id
+                                FROM scientific_artifacts
+                                WHERE run_id IN ($runMarks)
+                            )"
+                    );
+                    $i = 1;
+                    foreach ($scientificRunIds as $id) {
+                        $stmt->bindValue($i++, $id, PDO::PARAM_INT);
+                    }
+                    foreach ($scientificRunIds as $id) {
+                        $stmt->bindValue($i++, $id, PDO::PARAM_INT);
+                    }
+                    $stmt->execute();
+
+                    $stmt = $pdo->prepare(
+                        "DELETE FROM scientific_run_parents
+                         WHERE child_run_id IN ($runMarks)
+                            OR parent_run_id IN ($runMarks)"
+                    );
+                    $i = 1;
+                    foreach ($scientificRunIds as $id) {
+                        $stmt->bindValue($i++, $id, PDO::PARAM_INT);
+                    }
+                    foreach ($scientificRunIds as $id) {
+                        $stmt->bindValue($i++, $id, PDO::PARAM_INT);
+                    }
+                    $stmt->execute();
+                }
+
+                if ($jobIds !== []) {
+                    $jobIdMarks = implode(
+                        ',',
+                        array_fill(0, count($jobIds), '?')
+                    );
+                    $stmt = $pdo->prepare(
+                        "DELETE FROM analysis_jobs
+                         WHERE id IN ($jobIdMarks)"
+                    );
+                    $this->bindIds($stmt, $jobIds);
+                    $stmt->execute();
+                }
+
+                if ($scientificRunIds !== []) {
+                    $runMarks = implode(
+                        ',',
+                        array_fill(0, count($scientificRunIds), '?')
+                    );
+                    $stmt = $pdo->prepare(
+                        "DELETE FROM scientific_runs
+                         WHERE id IN ($runMarks)"
+                    );
+                    $this->bindIds($stmt, $scientificRunIds);
+                    $stmt->execute();
+                }
+
+                if ($benchmarkRunIds !== []) {
+                    $benchMarks = implode(
+                        ',',
+                        array_fill(0, count($benchmarkRunIds), '?')
+                    );
+                    $stmt = $pdo->prepare(
+                        "DELETE FROM benchmark_runs
+                         WHERE id IN ($benchMarks)"
+                    );
+                    $this->bindIds($stmt, $benchmarkRunIds);
+                    $stmt->execute();
+                }
+
+                $pdo->commit();
+            } catch (\Throwable $e) {
+                if ($pdo->inTransaction()) {
+                    $pdo->rollBack();
+                }
+                throw $e;
+            }
+
+            foreach (array_keys($files) as $path) {
+                if (is_file($path)) {
+                    @unlink($path);
+                }
+            }
+
+            $projectRoot = dirname(__DIR__, 2);
+            $storageRoot = rtrim(
+                (string)(
+                    getenv('EZSTUDIO_STORAGE_ROOT')
+                    ?: $projectRoot
+                        .DIRECTORY_SEPARATOR.'var'
+                        .DIRECTORY_SEPARATOR.'storage'
+                ),
+                '\\/'
+            );
+            $tmpRoot = rtrim(
+                (string)(
+                    getenv('EZSTUDIO_TMP_ROOT')
+                    ?: $projectRoot
+                        .DIRECTORY_SEPARATOR.'var'
+                        .DIRECTORY_SEPARATOR.'tmp'
+                ),
+                '\\/'
+            );
+
+            if ($hash !== '') {
+                foreach ($targets as $item) {
+                    $this->removeTree(
+                        $storageRoot
+                        .DIRECTORY_SEPARATOR.$item
+                        .DIRECTORY_SEPARATOR.$hash
+                    );
+                }
+            }
+
+            foreach ($jobIds as $jobId) {
+                $this->removeTree(
+                    $tmpRoot
+                    .DIRECTORY_SEPARATOR.'jobs'
+                    .DIRECTORY_SEPARATOR.(string)$jobId
+                );
+            }
+
+            foreach ($benchmarkRunIds as $runId) {
+                foreach (
+                    glob(
+                        $projectRoot
+                        .DIRECTORY_SEPARATOR.'results'
+                        .DIRECTORY_SEPARATOR.sprintf('run-%06d-*', $runId)
+                    ) ?: []
+                    as $path
+                ) {
+                    $this->removeTree($path);
+                }
+            }
+
+            return [
+                'song_ids' => $songIds,
+                'audio_sha256' => $hash,
+                'deleted_regions' => $targets,
+            ];
+        } finally {
+            $this->db->releaseAnalysisRegionLocks($owner);
+        }
     }
 
     public function deleteGroup(int $songId): array
@@ -441,13 +718,34 @@ final class CatalogService
             }
         }
 
+        $job = null;
+        if ($this->tableExists('analysis_jobs')) {
+            $stmt = $this->db->pdo()->prepare(
+                "SELECT id,status,progress
+                 FROM analysis_jobs
+                 WHERE scientific_run_id=?
+                 ORDER BY id DESC LIMIT 1"
+            );
+            $stmt->execute([(int)$run['id']]);
+            $job = $stmt->fetch() ?: null;
+        }
+
+        $viewState = (string)$run['state'];
+        if ($job !== null && (string)$job['status'] === 'cancelled') {
+            $viewState = 'cancelled';
+        } elseif ($job !== null && (string)$job['status'] === 'cancelling') {
+            $viewState = 'running';
+        }
+
         return [
-            'state' => (string)$run['state'],
-            'progress' => $progress,
+            'state' => $viewState,
+            'progress' => $job !== null ? (int)$job['progress'] : $progress,
             'run_id' => (int)$run['id'],
             'public_id' => (string)$run['public_id'],
             'created_at' => (string)$run['created_at'],
             'legacy' => false,
+            'job_id' => $job !== null ? (int)$job['id'] : null,
+            'job_status' => $job !== null ? (string)$job['status'] : null,
         ];
     }
 
@@ -497,6 +795,8 @@ final class CatalogService
             'public_id' => null,
             'created_at' => null,
             'legacy' => false,
+            'job_id' => null,
+            'job_status' => null,
         ];
     }
 
