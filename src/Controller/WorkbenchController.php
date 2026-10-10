@@ -2,7 +2,7 @@
 
 namespace App\Controller;
 
-use App\Service\DnaRegistry;
+use App\Service\AnalysisRunRegistry;
 use App\Service\CatalogService;
 use App\Service\Database;
 use App\Service\WorkbenchCatalog;
@@ -82,7 +82,7 @@ final class WorkbenchController extends AbstractController
     public function stems(
         Request $request,
         WorkbenchCatalog $catalog,
-        DnaRegistry $dna,
+        AnalysisRunRegistry $runRegistry,
     ): Response {
         $song = $catalog->selectedSong($this->songId($request));
         $runs = [];
@@ -91,13 +91,13 @@ final class WorkbenchController extends AbstractController
         if ($song) {
             $seen = [];
             foreach ($song['song_ids'] ?? [(int)$song['id']] as $songId) {
-                foreach ($dna->runsForSongItem((int)$songId, 'stems') as $row) {
+                foreach ($runRegistry->runsForSongItem((int)$songId, 'stems') as $row) {
                     $id = (int)$row['id'];
                     if (isset($seen[$id])) {
                         continue;
                     }
                     $seen[$id] = true;
-                    $full = $dna->run($id);
+                    $full = $runRegistry->run($id);
                     if ($full) {
                         $full['audio_artifacts'] = $this->audioArtifacts(
                             $full['artifacts'] ?? []

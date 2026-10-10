@@ -14,8 +14,8 @@ from perf_probe import GenePerformanceProbe
 
 
 @dataclass(frozen=True)
-class GeneSpec:
-    gene_id: str
+class ModuleConfig:
+    module_id: str
     display_name: str
     family: str
     order: int
@@ -30,7 +30,7 @@ class GeneSpec:
 
 
 @dataclass
-class GeneContext:
+class ModuleContext:
     source: Path
     audio_sha256: str
     y: np.ndarray
@@ -59,30 +59,30 @@ def release_accelerator_memory() -> None:
         pass
 
 
-def run_gene(
-    spec: GeneSpec,
-    context: GeneContext,
+def run_module(
+    config: ModuleConfig,
+    context: ModuleContext,
     fn: Callable[[GeneContext], dict[str, Any]],
 ) -> dict[str, Any]:
     started = time.perf_counter()
     record: dict[str, Any] = {
-        "id": spec.gene_id,
-        "name": spec.display_name,
-        "family": spec.family,
-        "order": spec.order,
+        "id": config.module_id,
+        "name": config.display_name,
+        "family": config.family,
+        "order": config.order,
         "status": "running",
         "engine": {
-            "name": spec.engine,
-            "version": spec.engine_version,
+            "name": config.engine,
+            "version": config.engine_version,
         },
         "model": {
-            "id": spec.model_id,
-            "path": spec.model_path,
+            "id": config.model_id,
+            "path": config.model_path,
         },
-        "device": spec.device,
-        "parameters": spec.parameters,
-        "thresholds": spec.thresholds,
-        "weights": spec.weights,
+        "device": config.device,
+        "parameters": config.parameters,
+        "thresholds": config.thresholds,
+        "weights": config.weights,
         "input": {
             "audio_sha256": context.audio_sha256,
             "sample_rate": context.sr,
@@ -100,10 +100,10 @@ def run_gene(
     }
 
     perf_probe = GenePerformanceProbe(
-        gene_id=spec.gene_id,
-        gene_name=spec.display_name,
-        family=spec.family,
-        device=spec.device,
+        gene_id=config.module_id,
+        gene_name=config.display_name,
+        family=config.family,
+        device=config.device,
         audio_sha256=context.audio_sha256,
     )
     perf_probe.start()
@@ -144,3 +144,9 @@ def run_gene(
         release_accelerator_memory()
 
     return record
+
+
+# Legacy aliases retained for terminology-migration compatibility.
+GeneSpec = ModuleConfig
+GeneContext = ModuleContext
+run_gene = run_module

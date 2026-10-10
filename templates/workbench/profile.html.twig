@@ -416,7 +416,7 @@
 <div class="card"><h2>Instrumentation probable</h2>{% if t.available ?? false %}<table><thead><tr><th>Instrument</th><th>Score</th></tr></thead><tbody>{% for x in t.instrumentation ?? [] %}<tr><td>{{ x.label }}</td><td>{{ (x.score*100)|number_format(1) }}%</td></tr>{% endfor %}</tbody></table>{% else %}<p class="meta">Classifieur instrument non disponible.</p>{% endif %}</div>
 <div class="card"><h2>Voix</h2>{% if t.available ?? false %}<table><thead><tr><th>Caractéristique</th><th>Score</th></tr></thead><tbody>{% for x in t.voice ?? [] %}<tr><td>{{ x.label }}</td><td>{{ (x.score*100)|number_format(1) }}%</td></tr>{% endfor %}</tbody></table>{% else %}<p class="meta">Classifieur vocal non disponible.</p>{% endif %}</div>
 <div class="card"><h2>Ambiance / mood</h2>{% if t.available ?? false %}<table><thead><tr><th>Tag</th><th>Score</th></tr></thead><tbody>{% for x in t.mood ?? [] %}<tr><td>{{ x.label }}</td><td>{{ (x.score*100)|number_format(1) }}%</td></tr>{% endfor %}</tbody></table>{% else %}<p class="meta">Classifieur mood non disponible.</p>{% endif %}</div>
-<div class="card"><a class="button secondary" href="{{ path('dna_run',{id:selected_profile_run.id}) }}">Run ADN PROFILE</a> <a class="button" href="{{ path('workbench_stems',{song:selected_song.id}) }}">Ouvrir STEMS</a> <span class="meta">Navigation uniquement.</span></div>
+<div class="card"><a class="button secondary" href="{{ path('dna_run',{id:selected_profile_run.id}) }}">Run PROFILE</a> <a class="button" href="{{ path('workbench_stems',{song:selected_song.id}) }}">Ouvrir STEMS</a> <span class="meta">Navigation uniquement.</span></div>
 {% if profile_active %}
 <div data-profile-live-refresh="1" hidden></div>
 <script>

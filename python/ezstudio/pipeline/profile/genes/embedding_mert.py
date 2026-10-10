@@ -6,7 +6,7 @@ import gc
 
 import numpy as np
 
-from gene import GeneContext
+from gene import ModuleContext
 from runtime_deps import prepare_profile_imports
 
 
@@ -27,7 +27,7 @@ def _chunks(
     return [y[int(start): int(start) + length] for start in starts]
 
 
-def _run(context: GeneContext, model_dir: Path) -> dict:
+def _run(context: ModuleContext, model_dir: Path) -> dict:
     prepare_profile_imports()
     try:
         import librosa
@@ -153,7 +153,7 @@ def _run(context: GeneContext, model_dir: Path) -> dict:
     return result
 
 
-def run_95m(context: GeneContext) -> dict:
+def run_95m(context: ModuleContext) -> dict:
     return _run(
         context,
         context.ai_models_root
@@ -164,7 +164,7 @@ def run_95m(context: GeneContext) -> dict:
     )
 
 
-def run_330m(context: GeneContext) -> dict:
+def run_330m(context: ModuleContext) -> dict:
     return _run(
         context,
         context.ai_models_root

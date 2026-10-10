@@ -4,21 +4,21 @@ from collections import defaultdict
 import math
 from typing import Any, Callable
 
-from gene import GeneContext, GeneSpec, run_gene
+from gene import ModuleContext, ModuleConfig, run_module
 from canonical_profile import build_genre_hierarchy, build_vocal_profile
 
 
-class GeneRegistry:
+class ModuleRegistry:
     def __init__(self) -> None:
         self._entries: list[
-            tuple[GeneSpec, Callable[[GeneContext], dict[str, Any]]]
+            tuple[ModuleConfig, Callable[[ModuleContext], dict[str, Any]]]
         ] = []
 
     def add(
         self,
-        spec: GeneSpec,
-        fn: Callable[[GeneContext], dict[str, Any]],
-    ) -> "GeneRegistry":
+        spec: ModuleConfig,
+        fn: Callable[[ModuleContext], dict[str, Any]],
+    ) -> "ModuleRegistry":
         self._entries.append((spec, fn))
         return self
 
@@ -40,7 +40,7 @@ class GeneRegistry:
             self._entries,
             key=lambda item: item[0].order,
         ):
-            runtime = by_id.get(spec.gene_id, {})
+            runtime = by_id.get(spec.module_id, {})
             source_file = inspect.getsourcefile(fn)
             source_sha256 = None
             if source_file and Path(source_file).is_file():
@@ -69,7 +69,7 @@ class GeneRegistry:
 
             genes.append(
                 {
-                    "id": spec.gene_id,
+                    "id": spec.module_id,
                     "name": spec.display_name,
                     "family": spec.family,
                     "order": spec.order,
@@ -95,7 +95,7 @@ class GeneRegistry:
 
     def run(
         self,
-        context: GeneContext,
+        context: ModuleContext,
         progress: Callable[[int, str], None] | None = None,
     ) -> dict[str, Any]:
         entries = sorted(self._entries, key=lambda item: item[0].order)
@@ -106,7 +106,7 @@ class GeneRegistry:
             if progress:
                 percent = 8 + int((index / total) * 84)
                 progress(percent, f"PROFILE: {spec.display_name}")
-            records.append(run_gene(spec, context, fn))
+            records.append(run_module(spec, context, fn))
 
         by_family: dict[str, list[dict[str, Any]]] = defaultdict(list)
         for record in records:
@@ -793,3 +793,7 @@ def build_consensus(records: list[dict[str, Any]]) -> dict[str, Any]:
             "choirs_usable_for_stems": False,
         },
     }
+
+
+# Legacy alias retained for terminology-migration compatibility.
+GeneRegistry = ModuleRegistry

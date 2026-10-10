@@ -21,8 +21,8 @@ class RegisteredAdapter:
 class EngineAdapterRegistry:
     """Region-agnostic registry of engine/model adapters.
 
-    A Gene Spec points to an adapter by stable name. The adapter owns only the
-    technical inference capability; scientific choices remain in the Gene Spec.
+    A Module Config points to an adapter by stable name. The adapter owns only the
+    technical inference capability; scientific choices remain in the Module Config.
     """
 
     def __init__(self) -> None:

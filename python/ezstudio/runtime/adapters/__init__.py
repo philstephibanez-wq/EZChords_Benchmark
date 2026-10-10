@@ -1,5 +1,5 @@
 """Engine adapters for the EZStudio declarative runtime.
 
 Adapters are technical capability boundaries. Region-specific scientific policy
-must remain in Gene Specs, not inside adapters.
+must remain in Module Configs, not inside adapters.
 """

@@ -4,7 +4,7 @@ namespace App\Service;
 
 use PDO;
 
-final class DnaRegistry
+class DnaRegistry
 {
     public function __construct(private readonly Database $db) {}
 

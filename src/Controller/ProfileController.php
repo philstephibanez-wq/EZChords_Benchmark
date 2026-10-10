@@ -2,7 +2,7 @@
 
 namespace App\Controller;
 
-use App\Service\DnaRegistry;
+use App\Service\AnalysisRunRegistry;
 use App\Service\ProfileDnaExecutionService;
 use App\Service\ProfileFrenchSummary;
 use App\Service\ProfileValidationService;
@@ -25,7 +25,7 @@ final class ProfileController extends AbstractController
     public function index(
         Request $request,
         WorkbenchCatalog $catalog,
-        DnaRegistry $dna,
+        AnalysisRunRegistry $runRegistry,
         ProfileDnaExecutionService $execution,
         ProfileFrenchSummary $summary,
         ProfileValidationService $validation,
@@ -37,11 +37,11 @@ final class ProfileController extends AbstractController
         if ($song) {
             $seen = [];
             foreach ($song['song_ids'] ?? [(int)$song['id']] as $songId) {
-                foreach ($dna->runsForSongItem((int)$songId, 'profile') as $row) {
+                foreach ($runRegistry->runsForSongItem((int)$songId, 'profile') as $row) {
                     $id = (int)$row['id'];
                     if (isset($seen[$id])) continue;
                     $seen[$id] = true;
-                    $full = $dna->run($id);
+                    $full = $runRegistry->run($id);
                     if ($full) $runs[] = $full;
                 }
             }
@@ -99,10 +99,10 @@ final class ProfileController extends AbstractController
     public function validate(
         int $id,
         Request $request,
-        DnaRegistry $dna,
+        AnalysisRunRegistry $runRegistry,
         ProfileValidationService $validation,
     ): Response {
-        $run = $dna->run($id);
+        $run = $runRegistry->run($id);
         if (!$run || (string)($run['item'] ?? '') !== 'profile') {
             return new Response('Run PROFILE introuvable.', 404);
         }
@@ -132,7 +132,7 @@ final class ProfileController extends AbstractController
     }
 
     #[Route('/profile/analyze', name: 'profile_analyze', methods: ['POST'])]
-    public function analyze(Request $request, WorkbenchCatalog $catalog, DnaRegistry $dna, ProfileDnaExecutionService $execution): Response
+    public function analyze(Request $request, WorkbenchCatalog $catalog, AnalysisRunRegistry $runRegistry, ProfileDnaExecutionService $execution): Response
     {
         $songId = filter_var($request->request->get('song'), FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
         if ($songId === false || $songId === null) return new Response('Chanson invalide.', 400);
@@ -143,7 +143,7 @@ final class ProfileController extends AbstractController
         $source = $catalog->sourcePath($song);
         if ($source === null) return new Response('Source IMPORT indisponible.', 409);
 
-        $run = $dna->createRun(
+        $run = $runRegistry->createRun(
             (int)$song['id'],
             'profile',
             ['name' => 'ezstudio-profile-genes', 'version' => 'r3b31', 'model' => 'multi-engine-profile-genes'],

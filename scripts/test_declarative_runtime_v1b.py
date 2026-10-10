@@ -68,7 +68,7 @@ assert [x["label"] for x in mutated["selected"]] == ["a"]
 
 wrapper_text = WRAPPER.read_text(encoding="utf-8")
 assert "run_clap_zero_shot" in wrapper_text
-assert "load_gene_spec" in wrapper_text
+assert "load_module_config" in wrapper_text
 assert "semantic.clap-open-vocabulary.r3b35c.json" in wrapper_text
 assert "from semantic_clap import" not in wrapper_text
 

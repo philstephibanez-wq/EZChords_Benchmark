@@ -6,13 +6,13 @@ final class ProfileDnaExecutionService
 {
     public function __construct(
         private readonly Database $db,
-        private readonly DnaRegistry $dna,
-        private readonly GenomeRegistry $genome,
+        private readonly AnalysisRunRegistry $runRegistry,
+        private readonly PresetRegistry $presets,
     ) {}
 
     public function queue(int $scientificRunId, string $sourcePath, string $audioHash): array
     {
-        $run = $this->dna->run($scientificRunId);
+        $run = $this->runRegistry->run($scientificRunId);
         if (!$run || (string)$run['item'] !== 'profile') throw new \InvalidArgumentException('profile_run_required');
         if (!in_array((string)$run['state'], ['created','error'], true)) throw new \InvalidArgumentException('profile_run_not_queueable');
         if (!is_file($sourcePath)) throw new \RuntimeException('profile_source_missing');
@@ -48,10 +48,10 @@ final class ProfileDnaExecutionService
         ]);
 
         $jobId = (int)$this->db->pdo()->lastInsertId();
-        $this->dna->setAlias($scientificRunId, 'analysis_job', (string)$jobId);
-        $this->dna->setLabel($scientificRunId, 'analysis_job_id', (string)$jobId);
-        $this->dna->setLabel($scientificRunId, 'automatic_next_stage', 'false');
-        $this->dna->setState($scientificRunId, 'queued');
+        $this->runRegistry->setAlias($scientificRunId, 'analysis_job', (string)$jobId);
+        $this->runRegistry->setLabel($scientificRunId, 'analysis_job_id', (string)$jobId);
+        $this->runRegistry->setLabel($scientificRunId, 'automatic_next_stage', 'false');
+        $this->runRegistry->setState($scientificRunId, 'queued');
         return ['scientific_run_id' => $scientificRunId, 'job_id' => $jobId];
     }
 
@@ -69,8 +69,8 @@ final class ProfileDnaExecutionService
         if (!$job || (string)$job['kind'] !== 'profile') return;
         $runId = (int)($job['scientific_run_id'] ?? 0);
         if ($runId <= 0) return;
-        $this->dna->setLabel($runId, 'progress', (string)max(0, min(100, $percent)));
-        if ($percent > 0 && $percent < 100) $this->dna->setState($runId, 'running');
+        $this->runRegistry->setLabel($runId, 'progress', (string)max(0, min(100, $percent)));
+        if ($percent > 0 && $percent < 100) $this->runRegistry->setState($runId, 'running');
     }
 
     public function completeFromJob(int $jobId): void
@@ -91,7 +91,7 @@ final class ProfileDnaExecutionService
         $sha = hash_file('sha256', $outputPath);
         if (!is_string($sha) || $sha === '') throw new \RuntimeException('profile_output_hash_failed');
 
-        $this->dna->registerArtifact($runId, 'profile_json', $outputPath, $sha, [
+        $this->runRegistry->registerArtifact($runId, 'profile_json', $outputPath, $sha, [
             'analysis_job_id' => $jobId,
             'schema' => $result['schema'] ?? 'ezstudio.profile.v1',
             'audio_sha256' => $result['audio_sha256'] ?? '',
@@ -101,7 +101,7 @@ final class ProfileDnaExecutionService
         if (!is_array($genomeManifest)) {
             throw new \RuntimeException('profile_genome_manifest_missing');
         }
-        $regionRevision = $this->genome->captureRunGenome(
+        $regionRevision = $this->presets->captureRunGenome(
             $runId,
             'profile',
             $genomeManifest,
@@ -110,19 +110,19 @@ final class ProfileDnaExecutionService
         $metrics = is_array($result['characteristics'] ?? null) ? $result['characteristics'] : [];
         $diagnostics = ['tagging' => $result['tagging'] ?? [], 'profile_view' => $result['profile_view'] ?? [], 'gene_registry' => $result['gene_registry'] ?? [], 'warnings' => $result['warnings'] ?? []];
         $environment = is_array($result['environment'] ?? null) ? $result['environment'] : [];
-        $this->dna->setLabel(
+        $this->runRegistry->setLabel(
             $runId,
             'genome_region_revision',
             (string)$regionRevision['revision_ref']
         );
-        $this->dna->setLabel(
+        $this->runRegistry->setLabel(
             $runId,
             'genome_region_fingerprint',
             (string)$regionRevision['fingerprint']
         );
-        $this->dna->setLabel($runId, 'progress', '100');
-        $this->dna->setLabel($runId, 'automatic_next_stage', 'false');
-        $this->dna->setState($runId, 'done', $metrics, $diagnostics, $environment, gmdate('c'));
+        $this->runRegistry->setLabel($runId, 'progress', '100');
+        $this->runRegistry->setLabel($runId, 'automatic_next_stage', 'false');
+        $this->runRegistry->setState($runId, 'done', $metrics, $diagnostics, $environment, gmdate('c'));
     }
 
     public function failFromJob(int $jobId, string $error): void
@@ -131,7 +131,7 @@ final class ProfileDnaExecutionService
         if (!$job || (string)$job['kind'] !== 'profile') return;
         $runId = (int)($job['scientific_run_id'] ?? 0);
         if ($runId <= 0) return;
-        $this->dna->setLabel($runId, 'last_error', $error);
-        $this->dna->setState($runId, 'error', [], ['error' => $error], [], gmdate('c'));
+        $this->runRegistry->setLabel($runId, 'last_error', $error);
+        $this->runRegistry->setState($runId, 'error', [], ['error' => $error], [], gmdate('c'));
     }
 }

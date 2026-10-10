@@ -1,9 +1,9 @@
 {% extends 'base.html.twig' %}
-{% block title %}ADN {{ run.public_id }} · EZStudio_lab{% endblock %}
+{% block title %}Preset {{ run.public_id }} · EZStudio_lab{% endblock %}
 {% block body %}
 <div class="card hero">
 <div>
-<h1>ADN {{ run.public_id }}</h1>
+<h1>Preset {{ run.public_id }}</h1>
 <div class="meta">{{ run.title }}{% if run.artist %} · {{ run.artist }}{% endif %} · {{ run.item|upper }} · {{ run.state }}</div>
 </div>
 <a class="button secondary" href="{{ path('dna_run_json',{id:run.id}) }}">JSON</a>

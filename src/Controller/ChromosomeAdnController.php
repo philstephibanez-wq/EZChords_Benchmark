@@ -28,7 +28,7 @@ final class ChromosomeAdnController extends AbstractController
         if (!is_dir($exportDir)) mkdir($exportDir, 0777, true);
 
         $safe = preg_replace('/[^A-Za-z0-9._-]+/', '-', trim((string)$song['title'].' '.(string)$song['artist'])) ?: 'song-'.$id;
-        $output = $exportDir.DIRECTORY_SEPARATOR.'EZStudio_CHROMOSOME_ADN_'.trim($safe, '-._').'_'.gmdate('Ymd_His').'.zip';
+        $output = $exportDir.DIRECTORY_SEPARATOR.'EZStudio_PRESET_'.trim($safe, '-._').'_'.gmdate('Ymd_His').'.zip';
         $command = [$python, $script, '--db', $db->path(), '--song-id', (string)$id, '--output', $output];
 
         $pipes = [];

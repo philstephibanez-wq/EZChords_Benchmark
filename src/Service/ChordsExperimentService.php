@@ -15,13 +15,13 @@ final class ChordsExperimentService
     ];
 
     public function __construct(
-        private readonly DnaRegistry $dna,
+        private readonly AnalysisRunRegistry $runRegistry,
         private readonly string $projectDir = __DIR__.'/../..',
     ) {}
 
     public function stemsRuns(int $songId): array
     {
-        $runs = $this->dna->runsForSongItem($songId, 'stems');
+        $runs = $this->runRegistry->runsForSongItem($songId, 'stems');
         $out = [];
 
         foreach ($runs as $run) {
@@ -30,7 +30,7 @@ final class ChordsExperimentService
             }
 
             $artifacts = array_values(array_filter(
-                $this->dna->artifactsForRun((int)$run['id']),
+                $this->runRegistry->artifactsForRun((int)$run['id']),
                 static fn(array $a): bool =>
                     in_array((string)$a['role'], self::ALLOWED_ROLES, true)
             ));
@@ -54,7 +54,7 @@ final class ChordsExperimentService
         string $engineName,
         string $signature,
     ): array {
-        $parent = $this->dna->run($parentStemsRunId);
+        $parent = $this->runRegistry->run($parentStemsRunId);
         if (!$parent
             || (int)$parent['song_id'] !== $songId
             || (string)$parent['item'] !== 'stems'
@@ -64,7 +64,7 @@ final class ChordsExperimentService
         }
 
         $available = [];
-        foreach ($this->dna->artifactsForRun($parentStemsRunId) as $artifact) {
+        foreach ($this->runRegistry->artifactsForRun($parentStemsRunId) as $artifact) {
             $role = (string)$artifact['role'];
             if (in_array($role, self::ALLOWED_ROLES, true)) {
                 $available[(string)$artifact['artifact_id']] = $artifact;
@@ -106,7 +106,7 @@ final class ChordsExperimentService
             'execution_contract' => 'ezstudio.chords.selection.v1',
         ];
 
-        $run = $this->dna->createRun(
+        $run = $this->runRegistry->createRun(
             $songId,
             'chords',
             ['name' => $engineName],
@@ -114,26 +114,26 @@ final class ChordsExperimentService
         );
 
         $runId = (int)$run['id'];
-        $this->dna->addParent($runId, $parentStemsRunId, 'stems_source');
+        $this->runRegistry->addParent($runId, $parentStemsRunId, 'stems_source');
 
         foreach ($chordIds as $artifactId) {
-            $this->dna->selectInput($runId, $artifactId, 'chord_input');
+            $this->runRegistry->selectInput($runId, $artifactId, 'chord_input');
         }
         foreach ($noChordIds as $artifactId) {
-            $this->dna->selectInput($runId, $artifactId, 'no_chord_evidence');
+            $this->runRegistry->selectInput($runId, $artifactId, 'no_chord_evidence');
         }
 
-        $this->dna->setLabel($runId, 'selection_version', '1');
-        $this->dna->setLabel($runId, 'execution_contract', 'ezstudio.chords.selection.v1');
-        $this->dna->setState($runId, 'configured');
+        $this->runRegistry->setLabel($runId, 'selection_version', '1');
+        $this->runRegistry->setLabel($runId, 'execution_contract', 'ezstudio.chords.selection.v1');
+        $this->runRegistry->setState($runId, 'configured');
 
         $requestPath = $this->writeExecutionRequest(
-            $this->dna->run($runId),
+            $this->runRegistry->run($runId),
             $available
         );
-        $this->dna->setLabel($runId, 'execution_request', $requestPath);
+        $this->runRegistry->setLabel($runId, 'execution_request', $requestPath);
 
-        return $this->dna->run($runId);
+        return $this->runRegistry->run($runId);
     }
 
     private function normalizeSelection(array $ids, array $available): array

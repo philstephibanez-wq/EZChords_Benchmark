@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import numpy as np
 
-from gene import GeneContext
+from gene import ModuleContext
 
 
 MAJOR = np.array(
@@ -90,7 +90,7 @@ def _temporal_key_windows(
     return rows
 
 
-def run(context: GeneContext) -> dict:
+def run(context: ModuleContext) -> dict:
     import librosa
 
     hop_length = 512

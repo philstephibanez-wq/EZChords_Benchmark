@@ -16,7 +16,7 @@ final class StemsDnaExecutionService
 
     public function __construct(
         private readonly Database $db,
-        private readonly DnaRegistry $dna,
+        private readonly AnalysisRunRegistry $runRegistry,
     ) {}
 
     public function queue(
@@ -26,7 +26,7 @@ final class StemsDnaExecutionService
         bool $force,
         string $engineProfile,
     ): array {
-        $run = $this->dna->run($scientificRunId);
+        $run = $this->runRegistry->run($scientificRunId);
         if (!$run
             || (string)$run['item'] !== 'stems'
             || !in_array((string)$run['state'], ['created','configured','error'], true)
@@ -59,11 +59,11 @@ final class StemsDnaExecutionService
             $previousJobId,
         );
 
-        $this->dna->setAlias($scientificRunId, 'analysis_job', (string)$jobId);
-        $this->dna->setAlias($scientificRunId, 'lab_job', (string)$jobId);
-        $this->dna->setLabel($scientificRunId, 'audio_sha256', $audioHash);
-        $this->dna->setLabel($scientificRunId, 'technical_job_id', (string)$jobId);
-        $this->dna->setState($scientificRunId, 'queued');
+        $this->runRegistry->setAlias($scientificRunId, 'analysis_job', (string)$jobId);
+        $this->runRegistry->setAlias($scientificRunId, 'lab_job', (string)$jobId);
+        $this->runRegistry->setLabel($scientificRunId, 'audio_sha256', $audioHash);
+        $this->runRegistry->setLabel($scientificRunId, 'technical_job_id', (string)$jobId);
+        $this->runRegistry->setState($scientificRunId, 'queued');
 
         return [
             'scientific_run_id' => $scientificRunId,
@@ -97,9 +97,9 @@ final class StemsDnaExecutionService
             return;
         }
 
-        $this->dna->setLabel($scientificRunId, 'progress', (string)max(0, min(100, $percent)));
+        $this->runRegistry->setLabel($scientificRunId, 'progress', (string)max(0, min(100, $percent)));
         if ($percent > 0 && $percent < 100) {
-            $this->dna->setState($scientificRunId, 'running');
+            $this->runRegistry->setState($scientificRunId, 'running');
         }
     }
 
@@ -147,7 +147,7 @@ final class StemsDnaExecutionService
                 throw new \RuntimeException('stems_artifact_hash_failed:'.$name);
             }
 
-            $this->dna->registerArtifact(
+            $this->runRegistry->registerArtifact(
                 $scientificRunId,
                 $name,
                 $path,
@@ -175,7 +175,7 @@ final class StemsDnaExecutionService
             }
             $sha = hash_file('sha256', $path);
             if (is_string($sha) && $sha !== '') {
-                $this->dna->registerArtifact(
+                $this->runRegistry->registerArtifact(
                     $scientificRunId,
                     $role,
                     $path,
@@ -186,9 +186,9 @@ final class StemsDnaExecutionService
             }
         }
 
-        $this->dna->setLabel($scientificRunId, 'progress', '100');
-        $this->dna->setLabel($scientificRunId, 'stems_run_dir', $runDir);
-        $this->dna->setState(
+        $this->runRegistry->setLabel($scientificRunId, 'progress', '100');
+        $this->runRegistry->setLabel($scientificRunId, 'stems_run_dir', $runDir);
+        $this->runRegistry->setState(
             $scientificRunId,
             'done',
             [
@@ -217,8 +217,8 @@ final class StemsDnaExecutionService
             return;
         }
 
-        $this->dna->setLabel($scientificRunId, 'last_error', $error);
-        $this->dna->setState(
+        $this->runRegistry->setLabel($scientificRunId, 'last_error', $error);
+        $this->runRegistry->setState(
             $scientificRunId,
             'error',
             [],

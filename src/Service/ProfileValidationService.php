@@ -247,7 +247,7 @@ SQL);
             $allowed[(string)$subject['subject_key']] = $subject;
         }
 
-        [$regionRevision, $geneRevisions] = $this->genomeRefs($runId);
+        [$regionRevision, $geneRevisions] = $this->presetsRefs($runId);
         $pdo = $this->db->pdo();
         $pdo->beginTransaction();
         try {

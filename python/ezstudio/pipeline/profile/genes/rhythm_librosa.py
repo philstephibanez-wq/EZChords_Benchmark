@@ -2,10 +2,10 @@ from __future__ import annotations
 
 import numpy as np
 
-from gene import GeneContext
+from gene import ModuleContext
 
 
-def run(context: GeneContext) -> dict:
+def run(context: ModuleContext) -> dict:
     import librosa
 
     onset_env = librosa.onset.onset_strength(y=context.y, sr=context.sr)

@@ -1,7 +1,7 @@
 <?php
 namespace App\Service;
 
-final class GenomeRegistry
+class GenomeRegistry
 {
     public function __construct(private readonly Database $db) {}
 

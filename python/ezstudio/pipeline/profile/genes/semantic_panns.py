@@ -4,7 +4,7 @@ from pathlib import Path
 
 import numpy as np
 
-from gene import GeneContext, file_sha256
+from gene import ModuleContext, file_sha256
 from runtime_deps import prepare_profile_imports
 
 
@@ -66,7 +66,7 @@ def _temporal_summary(
     return result
 
 
-def run(context: GeneContext) -> dict:
+def run(context: ModuleContext) -> dict:
     prepare_profile_imports()
     try:
         import librosa

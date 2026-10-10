@@ -6,12 +6,12 @@ final class ChordsDnaExecutionService
 {
     public function __construct(
         private readonly Database $db,
-        private readonly DnaRegistry $dna,
+        private readonly AnalysisRunRegistry $runRegistry,
     ) {}
 
     public function queue(int $scientificRunId): array
     {
-        $run = $this->dna->run($scientificRunId);
+        $run = $this->runRegistry->run($scientificRunId);
         if (!$run
             || (string)$run['item'] !== 'chords'
             || !in_array((string)$run['state'], ['configured','error'], true)
@@ -52,11 +52,11 @@ final class ChordsDnaExecutionService
             $signature,
         );
 
-        $this->dna->setAlias($scientificRunId, 'benchmark_run', (string)$benchmarkRunId);
-        $this->dna->setAlias($scientificRunId, 'analysis_job', (string)$jobId);
-        $this->dna->setLabel($scientificRunId, 'benchmark_run_id', (string)$benchmarkRunId);
-        $this->dna->setLabel($scientificRunId, 'analysis_job_id', (string)$jobId);
-        $this->dna->setState($scientificRunId, 'queued');
+        $this->runRegistry->setAlias($scientificRunId, 'benchmark_run', (string)$benchmarkRunId);
+        $this->runRegistry->setAlias($scientificRunId, 'analysis_job', (string)$jobId);
+        $this->runRegistry->setLabel($scientificRunId, 'benchmark_run_id', (string)$benchmarkRunId);
+        $this->runRegistry->setLabel($scientificRunId, 'analysis_job_id', (string)$jobId);
+        $this->runRegistry->setState($scientificRunId, 'queued');
 
         return [
             'scientific_run_id' => $scientificRunId,
@@ -80,13 +80,13 @@ final class ChordsDnaExecutionService
             return;
         }
 
-        $this->dna->setLabel(
+        $this->runRegistry->setLabel(
             $scientificRunId,
             'progress',
             (string)max(0, min(100, $percent)),
         );
         if ($percent > 0 && $percent < 100) {
-            $this->dna->setState($scientificRunId, 'running');
+            $this->runRegistry->setState($scientificRunId, 'running');
         }
     }
 
@@ -137,7 +137,7 @@ final class ChordsDnaExecutionService
                 }
                 $sha = hash_file('sha256', $path);
                 if (is_string($sha) && $sha !== '') {
-                    $this->dna->registerArtifact(
+                    $this->runRegistry->registerArtifact(
                         $scientificRunId,
                         $role,
                         $path,
@@ -174,13 +174,13 @@ final class ChordsDnaExecutionService
             'analysis_source' => $result['analysis_source'] ?? '',
         ];
 
-        $this->dna->setLabel($scientificRunId, 'progress', '100');
-        $this->dna->setLabel(
+        $this->runRegistry->setLabel($scientificRunId, 'progress', '100');
+        $this->runRegistry->setLabel(
             $scientificRunId,
             'canonical_benchmark_run_id',
             (string)$job['run_id'],
         );
-        $this->dna->setState(
+        $this->runRegistry->setState(
             $scientificRunId,
             'done',
             $metrics,
@@ -205,8 +205,8 @@ final class ChordsDnaExecutionService
             return;
         }
 
-        $this->dna->setLabel($scientificRunId, 'last_error', $error);
-        $this->dna->setState(
+        $this->runRegistry->setLabel($scientificRunId, 'last_error', $error);
+        $this->runRegistry->setState(
             $scientificRunId,
             'error',
             [],

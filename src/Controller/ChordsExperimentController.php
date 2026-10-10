@@ -4,7 +4,7 @@ namespace App\Controller;
 
 use App\Service\ChordsExperimentService;
 use App\Service\ChordsDnaExecutionService;
-use App\Service\DnaRegistry;
+use App\Service\AnalysisRunRegistry;
 use App\Service\LabCatalog;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\RedirectResponse;
@@ -19,7 +19,7 @@ final class ChordsExperimentController extends AbstractController
         Request $request,
         LabCatalog $catalog,
         ChordsExperimentService $experiments,
-        DnaRegistry $dna,
+        AnalysisRunRegistry $runRegistry,
     ): Response {
         $songId = filter_var(
             $request->query->get('song'),
@@ -37,7 +37,7 @@ final class ChordsExperimentController extends AbstractController
                 ? $experiments->stemsRuns((int)$song['id'])
                 : [],
             'chords_runs' => $song
-                ? $dna->runsForSongItem((int)$song['id'], 'chords')
+                ? $runRegistry->runsForSongItem((int)$song['id'], 'chords')
                 : [],
             'legacy_runs' => $song ? ($song['runs'] ?? []) : [],
         ]);

@@ -8,10 +8,10 @@ import sys
 
 import numpy as np
 
-from gene import GeneContext, file_sha256
+from gene import ModuleContext, file_sha256
 from runtime_deps import prepare_profile_imports
 
-def _temporary_wav(context: GeneContext) -> Path:
+def _temporary_wav(context: ModuleContext) -> Path:
     project_root = Path(__file__).resolve().parents[5]
     tmp_root = Path(
         os.getenv(
@@ -61,7 +61,7 @@ KEY_LABELS = [
 ]
 
 
-def _run(context: GeneContext, model_files: list[Path]) -> dict:
+def _run(context: ModuleContext, model_files: list[Path]) -> dict:
     roots = prepare_profile_imports()
 
     # MAD_MOM_R3B14_IMPORT_PRECEDENCE:
@@ -147,7 +147,7 @@ def _run(context: GeneContext, model_files: list[Path]) -> dict:
     }
 
 
-def run_2017(context: GeneContext) -> dict:
+def run_2017(context: ModuleContext) -> dict:
     root = (
         context.ai_models_root
         / "audio"
@@ -161,7 +161,7 @@ def run_2017(context: GeneContext) -> dict:
     )
 
 
-def run_2018(context: GeneContext) -> dict:
+def run_2018(context: ModuleContext) -> dict:
     root = (
         context.ai_models_root
         / "audio"

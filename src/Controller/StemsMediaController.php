@@ -3,7 +3,7 @@
 namespace App\Controller;
 
 use App\Service\Database;
-use App\Service\DnaRegistry;
+use App\Service\AnalysisRunRegistry;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\BinaryFileResponse;
 use Symfony\Component\HttpFoundation\Response;
@@ -15,9 +15,9 @@ final class StemsMediaController extends AbstractController
     private const AUDIO_EXTENSIONS=['wav','mp3','flac','ogg','oga','m4a','aac'];
 
     #[Route('/workbench/stems/artifact/{artifactId}',name:'workbench_stems_artifact_audio',methods:['GET'])]
-    public function artifact(string $artifactId,DnaRegistry $dna): Response
+    public function artifact(string $artifactId,AnalysisRunRegistry $runRegistry): Response
     {
-        $artifact=$dna->artifact($artifactId);
+        $artifact=$runRegistry->artifact($artifactId);
         if(!$artifact || (string)$artifact['item']!=='stems') throw $this->createNotFoundException();
         $path=trim((string)($artifact['path']??''));
         $ext=strtolower(pathinfo($path,PATHINFO_EXTENSION));

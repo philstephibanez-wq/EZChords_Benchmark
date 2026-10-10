@@ -11,8 +11,8 @@ from pathlib import Path
 
 import numpy as np
 
-from gene import GeneContext, GeneSpec
-from gene_registry import GeneRegistry
+from gene import ModuleContext, ModuleConfig
+from gene_registry import ModuleRegistry
 from genes import descriptors_librosa
 from genes import embedding_mert
 from genes import meter_chords_shared
@@ -66,10 +66,10 @@ def sha256(path: Path) -> str:
 
 
 def _gene_by_id(
-    gene_registry_result: dict,
+    module_registry_result: dict,
     gene_id: str,
 ) -> dict | None:
-    for record in gene_registry_result.get("genes") or []:
+    for record in module_registry_result.get("genes") or []:
         if record.get("id") == gene_id:
             return record
     return None
@@ -83,20 +83,20 @@ def _normalized(record: dict | None) -> dict:
 
 
 def _legacy_projection(
-    gene_registry_result: dict,
+    module_registry_result: dict,
     duration: float,
 ) -> tuple[dict, dict, list[str]]:
-    rhythm = _gene_by_id(gene_registry_result, "rhythm.librosa-beat")
-    meter = _gene_by_id(gene_registry_result, "meter.chords-shared-r9")
+    rhythm = _gene_by_id(module_registry_result, "rhythm.librosa-beat")
+    meter = _gene_by_id(module_registry_result, "meter.chords-shared-r9")
     tonal_consensus = (
-        (gene_registry_result.get("consensus") or {}).get("tonal") or {}
+        (module_registry_result.get("consensus") or {}).get("tonal") or {}
     )
     descriptors = _gene_by_id(
-        gene_registry_result,
+        module_registry_result,
         "descriptors.librosa-lowlevel",
     )
     clap = _gene_by_id(
-        gene_registry_result,
+        module_registry_result,
         "semantic.clap-open-vocabulary",
     )
 
@@ -157,7 +157,7 @@ def _legacy_projection(
         }
 
     warnings: list[str] = []
-    for record in gene_registry_result.get("genes") or []:
+    for record in module_registry_result.get("genes") or []:
         warnings.extend(
             str(item) for item in (record.get("warnings") or [])
         )
@@ -176,9 +176,9 @@ def _legacy_projection(
 
 
 
-def _profile_view(gene_registry_result: dict) -> dict:
-    records = gene_registry_result.get("genes") or []
-    consensus = gene_registry_result.get("consensus") or {}
+def _profile_view(module_registry_result: dict) -> dict:
+    records = module_registry_result.get("genes") or []
+    consensus = module_registry_result.get("consensus") or {}
 
     gene_rows = []
     embeddings = []
@@ -256,15 +256,15 @@ def _model_roots() -> tuple[Path, Path]:
     return ai_root, profile_root
 
 
-def build_gene_registry(
+def build_module_registry(
     ai_root: Path,
     profile_root: Path,
-) -> GeneRegistry:
+) -> ModuleRegistry:
     return (
-        GeneRegistry()
+        ModuleRegistry()
         .add(
-            GeneSpec(
-                gene_id="rhythm.librosa-beat",
+            ModuleConfig(
+                module_id="rhythm.librosa-beat",
                 display_name="Librosa Beat Tracker",
                 family="rhythm",
                 order=10,
@@ -277,8 +277,8 @@ def build_gene_registry(
             rhythm_librosa.run,
         )
         .add(
-            GeneSpec(
-                gene_id="meter.chords-shared-r9",
+            ModuleConfig(
+                module_id="meter.chords-shared-r9",
                 display_name="CHORDS Shared Meter R9",
                 family="meter",
                 order=20,
@@ -304,8 +304,8 @@ def build_gene_registry(
             meter_chords_shared.run,
         )
         .add(
-            GeneSpec(
-                gene_id="tonal.krumhansl-schmuckler",
+            ModuleConfig(
+                module_id="tonal.krumhansl-schmuckler",
                 display_name="Krumhansl-Schmuckler Key",
                 family="tonal",
                 order=30,
@@ -315,8 +315,8 @@ def build_gene_registry(
             tonal_ks.run,
         )
         .add(
-            GeneSpec(
-                gene_id="tonal.madmom-key-cnn-2017",
+            ModuleConfig(
+                module_id="tonal.madmom-key-cnn-2017",
                 display_name="Madmom Key CNN 2017 Ensemble",
                 family="tonal",
                 order=31,
@@ -334,8 +334,8 @@ def build_gene_registry(
             tonal_madmom_key.run_2017,
         )
         .add(
-            GeneSpec(
-                gene_id="tonal.madmom-key-cnn-2018",
+            ModuleConfig(
+                module_id="tonal.madmom-key-cnn-2018",
                 display_name="Madmom Genre-Agnostic Key CNN 2018",
                 family="tonal",
                 order=32,
@@ -354,8 +354,8 @@ def build_gene_registry(
             tonal_madmom_key.run_2018,
         )
         .add(
-            GeneSpec(
-                gene_id="descriptors.librosa-lowlevel",
+            ModuleConfig(
+                module_id="descriptors.librosa-lowlevel",
                 display_name="Librosa Low-Level Descriptors",
                 family="descriptors",
                 order=40,
@@ -365,8 +365,8 @@ def build_gene_registry(
             descriptors_librosa.run,
         )
         .add(
-            GeneSpec(
-                gene_id="semantic.clap-open-vocabulary",
+            ModuleConfig(
+                module_id="semantic.clap-open-vocabulary",
                 display_name="CLAP Open Vocabulary",
                 family="semantic",
                 order=60,
@@ -390,8 +390,8 @@ def build_gene_registry(
             semantic_clap_open_vocab.run,
         )
         .add(
-            GeneSpec(
-                gene_id="embedding.mert-95m",
+            ModuleConfig(
+                module_id="embedding.mert-95m",
                 display_name="MERT Music Embedding 95M",
                 family="embedding",
                 order=70,
@@ -419,8 +419,8 @@ def build_gene_registry(
             embedding_mert.run_95m,
         )
         .add(
-            GeneSpec(
-                gene_id="embedding.mert-330m",
+            ModuleConfig(
+                module_id="embedding.mert-330m",
                 display_name="MERT Music Embedding 330M",
                 family="embedding",
                 order=71,
@@ -448,8 +448,8 @@ def build_gene_registry(
             embedding_mert.run_330m,
         )
         .add(
-            GeneSpec(
-                gene_id="semantic.panns-cnn14",
+            ModuleConfig(
+                module_id="semantic.panns-cnn14",
                 display_name="PANNs CNN14 AudioSet",
                 family="semantic",
                 order=80,
@@ -472,8 +472,8 @@ def build_gene_registry(
             semantic_panns.run,
         )
         .add(
-            GeneSpec(
-                gene_id="semantic.passt-audioset",
+            ModuleConfig(
+                module_id="semantic.passt-audioset",
                 display_name="PaSST AudioSet Transformer",
                 family="semantic",
                 order=81,
@@ -502,6 +502,10 @@ def build_gene_registry(
     )
 
 
+
+# Legacy callable alias during terminology migration.
+build_gene_registry = build_module_registry
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--source", required=True)
@@ -526,7 +530,7 @@ def main() -> int:
     duration = float(librosa.get_duration(y=y, sr=sr))
     ai_root, profile_root = _model_roots()
 
-    context = GeneContext(
+    context = ModuleContext(
         source=source,
         audio_sha256=args.audio_hash,
         y=np.asarray(y, dtype=np.float32),
@@ -535,8 +539,8 @@ def main() -> int:
         ai_models_root=ai_root,
     )
 
-    registry = build_gene_registry(ai_root, profile_root)
-    gene_registry_result = registry.run(
+    module_registry = build_module_registry(ai_root, profile_root)
+    module_registry_result = module_registry.run(
         context,
         progress=lambda percent, message: write_progress(
             progress,
@@ -544,15 +548,15 @@ def main() -> int:
             message,
         ),
     )
-    genome_manifest = registry.genome_manifest(
-        gene_registry_result.get("genes") or [],
+    genome_manifest = module_registry.genome_manifest(
+        module_registry_result.get("genes") or [],
     )
 
     characteristics, tagging, warnings = _legacy_projection(
-        gene_registry_result,
+        module_registry_result,
         duration,
     )
-    profile_view = _profile_view(gene_registry_result)
+    profile_view = _profile_view(module_registry_result)
 
     result = {
         "schema": SCHEMA,
@@ -562,7 +566,7 @@ def main() -> int:
         "tagging": tagging,
         "profile_view": profile_view,
         "gene_registry": {
-            **gene_registry_result,
+            **module_registry_result,
             "ai_models_root": str(ai_root),
             "profile_models_root": str(profile_root),
         },

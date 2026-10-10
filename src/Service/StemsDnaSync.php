@@ -14,7 +14,7 @@ final class StemsDnaSync
         'other',
     ];
 
-    public function __construct(private readonly DnaRegistry $dna) {}
+    public function __construct(private readonly AnalysisRunRegistry $runRegistry) {}
 
     public function ensureScientificRun(array $job): ?array
     {
@@ -27,7 +27,7 @@ final class StemsDnaSync
             return null;
         }
 
-        $existing = $this->dna->findByAlias('lab_job', (string)$jobId);
+        $existing = $this->runRegistry->findByAlias('lab_job', (string)$jobId);
         if ($existing) {
             return $existing;
         }
@@ -35,14 +35,14 @@ final class StemsDnaSync
         $audioHash = trim((string)($job['request']['audio_hash'] ?? ''));
         $songId = isset($job['song_id']) && $job['song_id'] !== null
             ? (int)$job['song_id']
-            : $this->dna->songIdByAudioHash($audioHash);
+            : $this->runRegistry->songIdByAudioHash($audioHash);
 
         if (!$songId) {
             return null;
         }
 
         $profile = trim((string)($job['request']['engine_profile'] ?? 'canonical_roformer'));
-        $run = $this->dna->createRun(
+        $run = $this->runRegistry->createRun(
             $songId,
             'stems',
             [
@@ -60,15 +60,15 @@ final class StemsDnaSync
             ],
         );
 
-        $this->dna->setAlias((int)$run['id'], 'lab_job', (string)$jobId);
-        $this->dna->setLabel((int)$run['id'], 'audio_sha256', $audioHash);
+        $this->runRegistry->setAlias((int)$run['id'], 'lab_job', (string)$jobId);
+        $this->runRegistry->setLabel((int)$run['id'], 'audio_sha256', $audioHash);
 
         $state = (string)($job['state'] ?? 'created');
         if ($state !== 'created') {
-            $this->dna->setState((int)$run['id'], $state);
+            $this->runRegistry->setState((int)$run['id'], $state);
         }
 
-        return $this->dna->run((int)$run['id']);
+        return $this->runRegistry->run((int)$run['id']);
     }
 
     public function sync(array $job): ?array
@@ -82,14 +82,14 @@ final class StemsDnaSync
         $state = (string)($job['state'] ?? 'created');
 
         if ($state !== 'done') {
-            $this->dna->setState($runId, $state);
-            return $this->dna->run($runId);
+            $this->runRegistry->setState($runId, $state);
+            return $this->runRegistry->run($runId);
         }
 
         $result = is_array($job['result'] ?? null) ? $job['result'] : [];
         $runDir = trim((string)($result['run_dir'] ?? ''));
         if ($runDir === '' || !is_dir($runDir)) {
-            $this->dna->setState(
+            $this->runRegistry->setState(
                 $runId,
                 'error',
                 [],
@@ -97,7 +97,7 @@ final class StemsDnaSync
                 [],
                 gmdate('c'),
             );
-            return $this->dna->run($runId);
+            return $this->runRegistry->run($runId);
         }
 
         $manifest = $this->readJson(
@@ -132,7 +132,7 @@ final class StemsDnaSync
                 'timebase' => $manifest['timebase'] ?? 'original_audio_seconds',
             ];
 
-            $this->dna->registerArtifact(
+            $this->runRegistry->registerArtifact(
                 $runId,
                 $name,
                 $path,
@@ -155,7 +155,7 @@ final class StemsDnaSync
                 'engine' => $engine,
             ];
 
-        $this->dna->setState(
+        $this->runRegistry->setState(
             $runId,
             'done',
             $metrics,
@@ -164,7 +164,7 @@ final class StemsDnaSync
             (string)($job['finished_at'] ?? gmdate('c')),
         );
 
-        return $this->dna->run($runId);
+        return $this->runRegistry->run($runId);
     }
 
     public function syncMany(array $jobs): array

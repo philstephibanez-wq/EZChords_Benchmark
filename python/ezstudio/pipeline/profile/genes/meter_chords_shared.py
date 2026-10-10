@@ -3,10 +3,10 @@ from __future__ import annotations
 import numpy as np
 
 from meter_shared import estimate_meter_from_chords_engine
-from gene import GeneContext
+from gene import ModuleContext
 
 
-def run(context: GeneContext) -> dict:
+def run(context: ModuleContext) -> dict:
     result = estimate_meter_from_chords_engine(
         np.asarray(context.y, dtype=np.float32),
         int(context.sr),

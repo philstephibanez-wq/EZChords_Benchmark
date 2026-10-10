@@ -8,7 +8,7 @@ from typing import Any
 import numpy as np
 
 from ezstudio.runtime.decision import apply_decision
-from ezstudio.runtime.gene_spec import GeneSpecDocument
+from ezstudio.runtime.gene_spec import ModuleConfigDocument
 
 
 def _dependency_root() -> Path:
@@ -26,7 +26,7 @@ def _prepare_imports() -> None:
         sys.path.append(str(dep_root))
 
 
-def _model_dir(model_root: Path, spec: GeneSpecDocument) -> Path:
+def _model_dir(model_root: Path, spec: ModuleConfigDocument) -> Path:
     engine = spec.data.get("engine") or {}
     explicit = engine.get("model_path")
     if isinstance(explicit, str) and explicit.strip():
@@ -38,7 +38,7 @@ def _model_dir(model_root: Path, spec: GeneSpecDocument) -> Path:
     return model_root / model_id.rsplit("/", 1)[-1]
 
 
-def _taxonomy(spec: GeneSpecDocument) -> dict[str, list[str]]:
+def _taxonomy(spec: ModuleConfigDocument) -> dict[str, list[str]]:
     taxonomy = spec.data.get("taxonomy") or {}
     families = taxonomy.get("families") or {}
     return {
@@ -48,7 +48,7 @@ def _taxonomy(spec: GeneSpecDocument) -> dict[str, list[str]]:
     }
 
 
-def _prompts(spec: GeneSpecDocument) -> tuple[list[str], list[tuple[str, str]]]:
+def _prompts(spec: ModuleConfigDocument) -> tuple[list[str], list[tuple[str, str]]]:
     taxonomy = _taxonomy(spec)
     templates = ((spec.data.get("taxonomy") or {}).get("prompts") or {})
     prompts: list[str] = []
@@ -92,7 +92,7 @@ def family_rows_from_logits(
     """Compatibility scoring primitive.
 
     This deliberately reproduces R3B35C's category-relative softmax.
-    The decision layer is separate and comes from the Gene Spec.
+    The decision layer is separate and comes from the Module Config.
     """
     positions = [i for i, item in enumerate(index) if item[0] == family]
     if not positions:
@@ -117,7 +117,7 @@ def family_rows_from_logits(
     return rows
 
 
-def _family_policy(spec: GeneSpecDocument, family: str) -> dict[str, Any]:
+def _family_policy(spec: ModuleConfigDocument, family: str) -> dict[str, Any]:
     decision = spec.data.get("decision") or {}
     families = decision.get("families") or {}
     policy = families.get(family)
@@ -169,7 +169,7 @@ def _temporal_family_summary(
 def run_clap_zero_shot(
     source: Path,
     model_root: Path,
-    spec: GeneSpecDocument,
+    spec: ModuleConfigDocument,
 ) -> tuple[dict[str, Any], list[str]]:
     if spec.engine_adapter != "clap-zero-shot":
         raise ValueError(

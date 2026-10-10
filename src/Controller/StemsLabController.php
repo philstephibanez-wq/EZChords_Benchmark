@@ -2,7 +2,7 @@
 
 namespace App\Controller;
 
-use App\Service\DnaRegistry;
+use App\Service\AnalysisRunRegistry;
 use App\Service\LabCatalog;
 use App\Service\StemsDnaExecutionService;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
@@ -17,7 +17,7 @@ final class StemsLabController extends AbstractController
     public function index(
         Request $request,
         LabCatalog $catalog,
-        DnaRegistry $dna,
+        AnalysisRunRegistry $runRegistry,
         StemsDnaExecutionService $execution,
     ): Response {
         $songId = filter_var(
@@ -34,7 +34,7 @@ final class StemsLabController extends AbstractController
         foreach ($songJobs as $job) {
             $runId = (int)($job['scientific_run_id'] ?? 0);
             if ($runId > 0) {
-                $run = $dna->run($runId);
+                $run = $runRegistry->run($runId);
                 if ($run) {
                     $dnaRuns[(int)$job['job_id']] = $run;
                 }
@@ -54,7 +54,7 @@ final class StemsLabController extends AbstractController
     public function analyze(
         Request $request,
         LabCatalog $catalog,
-        DnaRegistry $dna,
+        AnalysisRunRegistry $runRegistry,
         StemsDnaExecutionService $execution,
     ): Response {
         $songId = filter_var(
@@ -88,7 +88,7 @@ final class StemsLabController extends AbstractController
             $engineProfile = 'canonical_roformer';
         }
 
-        $scientific = $dna->createRun(
+        $scientific = $runRegistry->createRun(
             (int)$song['id'],
             'stems',
             ['name' => $engineProfile],
@@ -125,7 +125,7 @@ final class StemsLabController extends AbstractController
     #[Route('/stems/job/{id<\d+>}', name: 'lab_stems_job', methods: ['GET'])]
     public function job(
         int $id,
-        DnaRegistry $dna,
+        AnalysisRunRegistry $runRegistry,
         StemsDnaExecutionService $execution,
     ): Response {
         $job = $execution->jobView($id);
@@ -136,7 +136,7 @@ final class StemsLabController extends AbstractController
         $dnaRun = null;
         $scientificRunId = (int)($job['scientific_run_id'] ?? 0);
         if ($scientificRunId > 0) {
-            $dnaRun = $dna->run($scientificRunId);
+            $dnaRun = $runRegistry->run($scientificRunId);
         }
 
         $manifest = null;
