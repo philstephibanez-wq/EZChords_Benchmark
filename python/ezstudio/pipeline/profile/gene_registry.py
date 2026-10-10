@@ -5,6 +5,7 @@ import math
 from typing import Any, Callable
 
 from gene import GeneContext, GeneSpec, run_gene
+from canonical_profile import build_genre_hierarchy, build_vocal_profile
 
 
 class GeneRegistry:
@@ -88,7 +89,7 @@ class GeneRegistry:
         return {
             "schema": "ezstudio.genome.region.v1",
             "region": "profile",
-            "pipeline_revision": "profile-r3b31-genomic-evolution",
+            "pipeline_revision": "profile-r3b35c-canonical-genre-vocals",
             "genes": genes,
         }
 
@@ -154,6 +155,307 @@ def _temporal_row(
         if str(key).casefold() == wanted and isinstance(value, dict):
             return value
     return {}
+
+
+
+_INSTRUMENT_CANONICAL = {
+    "acoustic guitar": "acoustic guitar",
+    "electric guitar": "electric guitar",
+    "guitar": "guitar",
+    "bass guitar": "bass guitar",
+    "acoustic bass": "acoustic bass",
+    "double bass": "acoustic bass",
+    "piano": "piano",
+    "electric piano": "electric piano",
+    "organ": "organ",
+    "electronic organ": "organ",
+    "synthesizer": "synthesizer",
+    "synthesizer keyboard": "synthesizer",
+    "drum kit": "drum kit",
+    "drums": "drum kit",
+    "snare drum": "snare drum",
+    "bass drum": "kick drum",
+    "kick drum": "kick drum",
+    "cymbal": "cymbal",
+    "percussion": "percussion",
+    "violin": "violin",
+    "fiddle": "violin",
+    "cello": "cello",
+    "string section": "string section",
+    "brass instrument": "brass section",
+    "brass section": "brass section",
+    "trumpet": "trumpet",
+    "trombone": "trombone",
+    "saxophone": "saxophone",
+    "flute": "flute",
+    "clarinet": "clarinet",
+    "harmonica": "harmonica",
+    "accordion": "accordion",
+    "harp": "harp",
+    "mandolin": "mandolin",
+    "ukulele": "ukulele",
+    "keyboard (musical)": "keyboard",
+    "keyboard": "keyboard",
+}
+
+
+def _canonical_instrument(label: str) -> str | None:
+    key = " ".join(str(label).casefold().replace("_", " ").split())
+    if key in _INSTRUMENT_CANONICAL:
+        return _INSTRUMENT_CANONICAL[key]
+    return None
+
+
+def _build_instrumentation_consensus(
+    records: list[dict[str, Any]],
+) -> dict[str, Any]:
+    """Cross-engine instrumentation evidence, intentionally uncalibrated.
+
+    CLAP supplies open-vocabulary instrument hypotheses. PANNs and PaSST
+    supply AudioSet labels. We canonicalize only exact known instrument labels,
+    preserve each source/rank, and require support from >=2 engines for a
+    candidate. This is an experimental PROFILE output until human benchmarking
+    proves it reliable enough for STEMS.
+    """
+    evidence: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    seen_gene_label: set[tuple[str, str]] = set()
+
+    for record in records:
+        if record.get("status") != "ok":
+            continue
+        gene_id = str(record.get("id") or "")
+
+        if gene_id == "semantic.clap-open-vocabulary":
+            rows = _semantic_rows(record, "instrumentation")[:6]
+            source_family = "clap_instrumentation"
+        elif gene_id in {"semantic.panns-cnn14", "semantic.passt-audioset"}:
+            rows = _semantic_rows(record, "audioset")[:25]
+            source_family = "audioset"
+        else:
+            continue
+
+        for rank, row in enumerate(rows, start=1):
+            if not isinstance(row, dict):
+                continue
+            source_label = str(row.get("label") or "").strip()
+            canonical = _canonical_instrument(source_label)
+            if canonical is None:
+                continue
+            dedupe = (gene_id, canonical)
+            if dedupe in seen_gene_label:
+                continue
+            seen_gene_label.add(dedupe)
+
+            temporal = _temporal_row(record, "audioset", source_label)
+            evidence[canonical].append(
+                {
+                    "gene": gene_id,
+                    "source_family": source_family,
+                    "source_label": source_label,
+                    "rank": rank,
+                    "raw_score": round(float(row.get("score") or 0.0), 6),
+                    "top5_support": temporal.get("top5_support"),
+                    "top10_support": temporal.get("top10_support"),
+                }
+            )
+
+    rows: list[dict[str, Any]] = []
+    for label, sources in evidence.items():
+        support = len({str(item["gene"]) for item in sources})
+        reciprocal_rank = sum(
+            1.0 / max(1, int(item["rank"]))
+            for item in sources
+        ) / max(1, len(sources))
+        rows.append(
+            {
+                "label": label,
+                "support": support,
+                "source_count": len(sources),
+                "rank_consensus": round(reciprocal_rank, 6),
+                "sources": sources,
+                "decision": "candidate" if support >= 2 else "weak",
+            }
+        )
+
+    rows.sort(
+        key=lambda row: (
+            -int(row["support"]),
+            -float(row["rank_consensus"]),
+            str(row["label"]),
+        )
+    )
+    candidates = [row for row in rows if row["decision"] == "candidate"]
+    weak = [row for row in rows if row["decision"] == "weak"]
+
+    return {
+        "schema": "ezstudio.profile.instrumentation-consensus.v1",
+        "status": "experimental",
+        "method": "canonical-label-rank-support-v1",
+        "calibrated": False,
+        "usable_for_stems": False,
+        "candidate_min_engine_support": 2,
+        "candidates": candidates[:12],
+        "weak": weak[:20],
+        "abstain": len(candidates) == 0,
+        "note": (
+            "Experimental mix-level instrumentation. No calibrated probability; "
+            "STEMS use is forbidden until the human benchmark gate passes."
+        ),
+    }
+
+
+
+_CHOIR_CLAP_LABELS = {
+    "choir",
+    "backing vocals",
+    "vocal harmonies",
+}
+_CHOIR_AUDIOSET_LABELS = {
+    "choir",
+    "chant",
+    "a capella",
+    "vocal music",
+}
+
+
+def _full_audioset_rank(
+    record: dict[str, Any],
+    wanted: set[str],
+) -> dict[str, Any] | None:
+    raw = record.get("raw")
+    if not isinstance(raw, dict):
+        return None
+    scores = raw.get("audioset_scores")
+    if not isinstance(scores, dict) or not scores:
+        return None
+
+    ranked: list[tuple[str, float]] = []
+    for label, value in scores.items():
+        try:
+            ranked.append((str(label), float(value)))
+        except (TypeError, ValueError):
+            continue
+    ranked.sort(key=lambda item: item[1], reverse=True)
+
+    best = None
+    for rank, (label, score) in enumerate(ranked, start=1):
+        if label.casefold() not in wanted:
+            continue
+        row = {
+            "label": label,
+            "score": round(score, 6),
+            "rank": rank,
+            "class_count": len(ranked),
+        }
+        if best is None or rank < int(best["rank"]):
+            best = row
+    return best
+
+
+def _build_choir_consensus(
+    records: list[dict[str, Any]],
+) -> dict[str, Any]:
+    # Conservative mix-level choir/backing-vocals evidence.
+    # Absence of a choir-specific label is never converted into a negative assertion.
+    sources: list[dict[str, Any]] = []
+
+    for record in records:
+        if record.get("status") != "ok":
+            continue
+        gene_id = str(record.get("id") or "")
+
+        if gene_id == "semantic.clap-open-vocabulary":
+            rows = _semantic_rows(record, "voice")
+            best = None
+            for rank, row in enumerate(rows, start=1):
+                if not isinstance(row, dict):
+                    continue
+                label = str(row.get("label") or "").strip()
+                if label.casefold() not in _CHOIR_CLAP_LABELS:
+                    continue
+                try:
+                    score = float(row.get("score") or 0.0)
+                except (TypeError, ValueError):
+                    score = 0.0
+                candidate = {
+                    "gene": gene_id,
+                    "label": label,
+                    "score": round(score, 6),
+                    "rank": rank,
+                    "evidence": (
+                        "strong"
+                        if rank <= 3 and score >= 0.10
+                        else "weak"
+                    ),
+                }
+                if best is None or rank < int(best["rank"]):
+                    best = candidate
+            if best is not None:
+                sources.append(best)
+
+        elif gene_id in {
+            "semantic.panns-cnn14",
+            "semantic.passt-audioset",
+        }:
+            best = _full_audioset_rank(
+                record,
+                _CHOIR_AUDIOSET_LABELS,
+            )
+            if best is not None:
+                rank = int(best["rank"])
+                score = float(best["score"])
+                sources.append(
+                    {
+                        "gene": gene_id,
+                        "label": best["label"],
+                        "score": round(score, 6),
+                        "rank": rank,
+                        "class_count": best["class_count"],
+                        "evidence": (
+                            "strong"
+                            if rank <= 12
+                            else (
+                                "weak"
+                                if rank <= 25
+                                else "trace"
+                            )
+                        ),
+                    }
+                )
+
+    strong_genes = {
+        str(row["gene"])
+        for row in sources
+        if row.get("evidence") == "strong"
+    }
+    weak_or_better = {
+        str(row["gene"])
+        for row in sources
+        if row.get("evidence") in {"strong", "weak"}
+    }
+
+    if len(strong_genes) >= 2:
+        decision = "detected"
+    elif len(strong_genes) >= 1 or len(weak_or_better) >= 2:
+        decision = "possible"
+    else:
+        decision = "inconclusive"
+
+    return {
+        "schema": "ezstudio.profile.choirs-consensus.v1",
+        "status": "experimental",
+        "decision": decision,
+        "calibrated": False,
+        "usable_for_stems": False,
+        "sources": sources,
+        "strong_engine_support": len(strong_genes),
+        "weak_or_better_engine_support": len(weak_or_better),
+        "abstain": decision == "inconclusive",
+        "note": (
+            "Conservative pre-STEMS choir/backing-vocals evidence. "
+            "Inconclusive means machine abstention, never confirmed absence."
+        ),
+    }
 
 
 def build_consensus(records: list[dict[str, Any]]) -> dict[str, Any]:
@@ -457,8 +759,15 @@ def build_consensus(records: list[dict[str, Any]]) -> dict[str, Any]:
         and record.get("status") == "ok"
     ]
 
+    instrumentation = _build_instrumentation_consensus(records)
+    choirs = _build_choir_consensus(records)
+
     return {
         "semantic": semantic,
+        "genre_hierarchy": build_genre_hierarchy(semantic),
+        "vocal_profile": build_vocal_profile(semantic),
+        "instrumentation": instrumentation,
+        "choirs": choirs,
         "tonal": tonal,
         "embedding": {
             "policy": "preserve-each-representation-no-vector-fusion",
@@ -478,5 +787,9 @@ def build_consensus(records: list[dict[str, Any]]) -> dict[str, Any]:
             "embedding_vectors_are_not_averaged_across_models": True,
             "confidence_is_not_calibrated_probability": True,
             "semantic_acceptance_threshold": 0.60,
+            "instrumentation_status": "experimental",
+            "instrumentation_usable_for_stems": False,
+            "choirs_status": "experimental",
+            "choirs_usable_for_stems": False,
         },
     }

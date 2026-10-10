@@ -218,25 +218,39 @@ def clap_tags(source: Path, model_root: Path) -> tuple[dict, list[str]]:
         accumulated = None
         chunk_logits: list[np.ndarray] = []
 
+        batch_size = max(
+            1,
+            int(os.getenv("EZSTUDIO_CLAP_BATCH_SIZE", "2")),
+        )
+
         with torch.inference_mode():
-            for chunk in chunks:
+            for start in range(0, len(chunks), batch_size):
+                batch_chunks = chunks[start:start + batch_size]
                 inputs = processor(
                     text=prompts,
-                    audio=chunk,
+                    audio=batch_chunks,
                     sampling_rate=sr,
                     return_tensors="pt",
                     padding=True,
                 )
                 inputs = {
-                    key: value.to("cuda") if hasattr(value, "to") else value
+                    key: value.to("cuda", non_blocking=True)
+                    if hasattr(value, "to")
+                    else value
                     for key, value in inputs.items()
                 }
                 output = model(**inputs)
-                logits = (
-                    output.logits_per_audio.detach().float().cpu().numpy()[0]
+                logits_batch = (
+                    output.logits_per_audio.detach().float().cpu().numpy()
                 )
-                chunk_logits.append(logits)
-                accumulated = logits if accumulated is None else accumulated + logits
+                for logits in logits_batch:
+                    logits = np.asarray(logits, dtype=np.float64)
+                    chunk_logits.append(logits)
+                    accumulated = (
+                        logits
+                        if accumulated is None
+                        else accumulated + logits
+                    )
 
         if accumulated is None:
             warnings.append("profile_clap_no_audio_chunks")
@@ -262,6 +276,8 @@ def clap_tags(source: Path, model_root: Path) -> tuple[dict, list[str]]:
         result["available"] = True
         result["chunks"] = len(chunks)
         result["chunk_seconds"] = 10.0
+        result["batch_size"] = batch_size
+        result["cuda_batching"] = True
 
         try:
             import transformers

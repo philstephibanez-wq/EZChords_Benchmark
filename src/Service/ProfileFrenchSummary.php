@@ -20,8 +20,12 @@ final class ProfileFrenchSummary
 
         $genres = $this->topLabels($tagging['genre'] ?? [], 4, 0.05, 'genre');
         $moods = $this->topLabels($tagging['mood'] ?? [], 4, 0.04, 'mood');
-        $instruments = $this->topLabels($tagging['instrumentation'] ?? [], 5, 0.04, 'instrument');
+        $instruments = $this->instrumentCandidates(
+            $view['instrumentation']['candidates'] ?? []
+        );
         $voice = $this->topLabels($tagging['voice'] ?? [], 4, 0.04, 'voice');
+        $choirs = is_array($view['choirs'] ?? null) ? $view['choirs'] : [];
+        $choirDecision = (string)($choirs['decision'] ?? 'inconclusive');
 
         $accepted=[]; $contextual=[];
         foreach (($view['audioset']['agreements'] ?? []) as $row) {
@@ -41,19 +45,42 @@ final class ProfileFrenchSummary
         if($key!==null) $sentences[]=sprintf('La tonalité retenue par le consensus disponible est %s.',$key);
         if($genres!==[]) $sentences[]='Les tags de genre CLAP suggèrent surtout : '.$this->joinLabels($genres).'.';
         if($moods!==[]) $sentences[]='L’ambiance ressort principalement comme '.$this->joinLabels($moods).'.';
-        if($instruments!==[]) $sentences[]='L’instrumentation probable met notamment en avant '.$this->joinLabels($instruments).'.';
+        if($instruments!==[]) $sentences[]='Les instruments actuellement confirmés par plusieurs moteurs sont '.$this->joinLabels($instruments).'.';
+        else $sentences[]='Aucun instrument n’est encore suffisamment confirmé par plusieurs moteurs.';
         if($accepted!==[]) $sentences[]='La convergence AudioSet retient '.implode(', ',array_unique($accepted)).'.';
-        if($voice!==[]) $sentences[]='Les observations vocales CLAP suggèrent '.$this->joinLabels($voice).'.';
+        if($voice!==[]) $sentences[]='Les observations vocales suggèrent '.$this->joinLabels($voice).'.';
+        if($choirDecision==='detected') $sentences[]='Des chœurs ou voix d’accompagnement sont détectés par plusieurs analyses.';
+        elseif($choirDecision==='possible') $sentences[]='Des chœurs ou voix d’accompagnement sont possibles, mais restent à confirmer.';
 
         return [
             'text'=>implode(' ',$sentences), 'tempo_bpm'=>$tempo,
             'tempo_qualifier'=>$tempo!==null?$this->tempoQualifier($tempo):null,
             'meter'=>$meter, 'key'=>$key, 'genres'=>$genres, 'moods'=>$moods,
             'instrumentation'=>$instruments, 'voice'=>$voice,
+            'choirs'=>$choirs,
             'audioset_accepted'=>array_values(array_unique($accepted)),
             'audioset_contextual'=>array_values(array_unique($contextual)),
-            'notice'=>'Résumé déterministe dérivé de l’ADN. Les scores CLAP sont relatifs à la taxonomie comparée ; la confidence AudioSet n’est pas une probabilité calibrée.',
+            'notice'=>'Résumé déterministe dérivé de l’ADN. L’instrumentation est expérimentale et ne peut pas encore piloter STEMS tant que le benchmark humain n’est pas validé.',
         ];
+    }
+
+    private function instrumentCandidates(mixed $rows): array
+    {
+        if (!is_array($rows)) return [];
+        $result = [];
+        foreach ($rows as $row) {
+            if (!is_array($row)) continue;
+            $label = trim((string)($row['label'] ?? ''));
+            if ($label === '') continue;
+            $result[] = [
+                'label' => $this->translateLabel($label, 'instrument'),
+                'source_label' => $label,
+                'score' => null,
+                'support' => (int)($row['support'] ?? 0),
+            ];
+            if (count($result) >= 8) break;
+        }
+        return $result;
     }
 
     private function topLabels(mixed $rows,int $limit,float $minimum,string $family): array

@@ -127,10 +127,9 @@ SQL);
         }
 
         foreach ([
-            'genre' => 'Genre principal',
-            'instrumentation' => 'Instrument principal',
-            'voice' => 'Caractérisation vocale CLAP',
-            'mood' => 'Ambiance principale',
+            'genre' => 'Genre',
+            'voice' => 'Voix',
+            'mood' => 'Ambiance',
         ] as $family => $label) {
             $best = $this->bestScoredRow($tagging[$family] ?? []);
             if ($best === null) continue;
@@ -149,6 +148,51 @@ SQL);
             );
         }
 
+        $instrumentation = is_array($view['instrumentation'] ?? null)
+            ? $view['instrumentation']
+            : [];
+        $instrumentCandidates = is_array($instrumentation['candidates'] ?? null)
+            ? $instrumentation['candidates']
+            : [];
+        $instrumentLabels = [];
+        foreach ($instrumentCandidates as $candidateRow) {
+            if (!is_array($candidateRow)) {
+                continue;
+            }
+            $candidateLabel = trim((string)($candidateRow['label'] ?? ''));
+            if ($candidateLabel !== '') {
+                $instrumentLabels[] = $this->musicianInstrumentLabel($candidateLabel);
+            }
+        }
+        $subjects[] = $this->subject(
+            'region:instrumentation',
+            'instrumentation',
+            'Instruments',
+            $instrumentation,
+            $instrumentLabels !== []
+                ? implode(', ', array_slice($instrumentLabels, 0, 8))
+                : 'Aucun instrument suffisamment confirmé'
+        );
+
+        $choirs = is_array($view['choirs'] ?? null)
+            ? $view['choirs']
+            : [];
+        if ($choirs !== []) {
+            $choirDecision = (string)($choirs['decision'] ?? 'inconclusive');
+            $choirText = match ($choirDecision) {
+                'detected' => 'Chœurs détectés',
+                'possible' => 'Chœurs possibles',
+                default => 'Pas de preuve suffisante',
+            };
+            $subjects[] = $this->subject(
+                'region:choirs',
+                'choirs',
+                'Chœurs',
+                $choirs,
+                $choirText
+            );
+        }
+
         $audioSet = $this->bestAudioSetConclusion($view['audioset']['agreements'] ?? []);
         if ($audioSet !== null) {
             $sourceLabel = trim((string)($audioSet['label'] ?? ''));
@@ -158,7 +202,13 @@ SQL);
             if (isset($audioSet['confidence']) && is_numeric($audioSet['confidence'])) {
                 $text .= ' · score '.number_format((float)$audioSet['confidence'] * 100, 1).' %';
             }
-            $subjects[] = $this->subject('region:audioset', 'audioset', 'AudioSet principal', $audioSet, $text);
+            $subjects[] = $this->subject(
+                'region:audioset',
+                'audioset',
+                'Élément sonore',
+                $audioSet,
+                $this->musicianAudioLabel($sourceLabel)
+            );
         }
 
         return $subjects;
@@ -313,17 +363,142 @@ SQL);
         ];
     }
 
-    private function subject(string $subjectKey, string $itemKey, string $label, array $predicted, string $predictedText): array
-    {
+    private function subject(
+        string $subjectKey,
+        string $itemKey,
+        string $label,
+        array $predicted,
+        string $predictedText,
+    ): array {
+        [$question, $correctionHint, $humanValueLabel, $missingLabel] = match ($itemKey) {
+            'tempo' => [
+                'Le tempo vous paraît-il correct ?',
+                'Ex. 120 BPM',
+                'Votre correction',
+                null,
+            ],
+            'time_signature' => [
+                'La mesure proposée est-elle correcte ?',
+                'Ex. 4/4',
+                'Votre correction',
+                null,
+            ],
+            'key' => [
+                'La tonalité vous paraît-elle correcte ?',
+                'Ex. Sol mineur',
+                'Votre correction',
+                null,
+            ],
+            'genre' => [
+                'Ce genre décrit-il bien le morceau ?',
+                'Ex. rock/pop',
+                'Genre que vous choisiriez',
+                'Genre important non proposé',
+            ],
+            'instrumentation' => [
+                'Les instruments proposés correspondent-ils à ce que vous entendez ?',
+                'Ex. piano; synthé; basse; batterie',
+                'Instruments que vous entendez',
+                'Instrument important non proposé',
+            ],
+            'choirs' => [
+                'Entendez-vous des chœurs ou des voix d’accompagnement ?',
+                'Ex. chœurs au refrain; voix doublée',
+                'Ce que vous entendez',
+                null,
+            ],
+            'voice' => [
+                'La voix principale est-elle bien décrite ?',
+                'Ex. chanteur principal; chœurs',
+                'Ce que vous entendez',
+                'Élément vocal important non proposé',
+            ],
+            'mood' => [
+                'Cette ambiance correspond-elle au morceau ?',
+                'Ex. mélancolique',
+                'Ambiance que vous choisiriez',
+                null,
+            ],
+            'audioset' => [
+                'Cet élément sonore est-il réellement présent ?',
+                'Ex. chant',
+                'Votre correction',
+                'Élément sonore important non proposé',
+            ],
+            default => [
+                'Cette proposition vous paraît-elle correcte ?',
+                'Votre correction',
+                'Votre correction',
+                null,
+            ],
+        };
+
         return [
             'subject_key' => $subjectKey,
             'scope' => 'region',
             'item_key' => $itemKey,
             'gene_key' => null,
             'label' => $label,
+            'question' => $question,
+            'correction_hint' => $correctionHint,
+            'human_value_label' => $humanValueLabel,
+            'missing_label' => $missingLabel,
             'predicted' => $predicted,
             'predicted_text' => $predictedText,
         ];
+    }
+
+    private function musicianInstrumentLabel(string $label): string
+    {
+        $key = mb_strtolower(trim($label));
+        return match ($key) {
+            'acoustic guitar' => 'guitare acoustique',
+            'electric guitar' => 'guitare électrique',
+            'guitar' => 'guitare',
+            'bass guitar' => 'basse',
+            'acoustic bass' => 'contrebasse',
+            'piano' => 'piano',
+            'electric piano' => 'piano électrique',
+            'keyboard' => 'clavier',
+            'organ' => 'orgue',
+            'synthesizer' => 'synthé',
+            'drum kit' => 'batterie',
+            'snare drum' => 'caisse claire',
+            'kick drum' => 'grosse caisse',
+            'cymbal' => 'cymbales',
+            'percussion' => 'percussions',
+            'violin' => 'violon',
+            'cello' => 'violoncelle',
+            'string section' => 'cordes',
+            'brass section' => 'cuivres',
+            'trumpet' => 'trompette',
+            'trombone' => 'trombone',
+            'saxophone' => 'saxophone',
+            'flute' => 'flûte',
+            'clarinet' => 'clarinette',
+            'harmonica' => 'harmonica',
+            'accordion' => 'accordéon',
+            'harp' => 'harpe',
+            'mandolin' => 'mandoline',
+            'ukulele' => 'ukulélé',
+            default => $label,
+        };
+    }
+
+    private function musicianAudioLabel(string $label): string
+    {
+        $key = mb_strtolower(trim($label));
+        return match ($key) {
+            'singing' => 'chant',
+            'speech' => 'parole',
+            'music' => 'musique',
+            'guitar' => 'guitare',
+            'piano' => 'piano',
+            'drum' => 'batterie',
+            'drums' => 'batterie',
+            'bass guitar' => 'basse',
+            default => $label,
+        };
     }
 
     private function bestScoredRow(mixed $rows): ?array

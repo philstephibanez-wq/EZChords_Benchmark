@@ -64,7 +64,7 @@
   {% if profile_summary.moods %}<div class="summary-line"><strong>Ambiances</strong> · {% for x in profile_summary.moods %}{{ x.label }} ({{ (x.score*100)|number_format(1) }} %){% if not loop.last %}, {% endif %}{% endfor %}</div>{% endif %}
   {% if profile_summary.instrumentation %}<div class="summary-line"><strong>Instrumentation probable</strong> · {% for x in profile_summary.instrumentation %}{{ x.label }} ({{ (x.score*100)|number_format(1) }} %){% if not loop.last %}, {% endif %}{% endfor %}</div>{% endif %}
   {% if profile_summary.voice %}<div class="summary-line"><strong>Voix</strong> · {% for x in profile_summary.voice %}{{ x.label }} ({{ (x.score*100)|number_format(1) }} %){% if not loop.last %}, {% endif %}{% endfor %}</div>{% endif %}
-  {% if profile_summary.audioset_contextual %}<div class="summary-line"><strong>Labels contextuels conservés dans l’ADN</strong> · {{ profile_summary.audioset_contextual|join(', ') }}</div>{% endif %}
+  {% if profile_summary.audioset_contextual %}<div class="summary-line"><strong>Autres éléments sonores conservés dans l’ADN</strong> · {{ profile_summary.audioset_contextual|join(', ') }}</div>{% endif %}
   <div class="meta" style="margin-top:10px">{{ profile_summary.notice }}</div>
 </div>
 <style>
@@ -78,18 +78,18 @@
     <div>
       <h2>Validation humaine</h2>
       <div class="meta">
-        Annotation du run {{ selected_profile_run.public_id }}.
-        Le formulaire valide les conclusions principales ; l’ADN conserve toutes les hypothèses et tous les scores.
-        UNKNOWN est une abstention humaine et n'est jamais compté comme erreur.
+        Vérification musicale du run {{ selected_profile_run.public_id }}.
+        Le formulaire valide les conclusions principales ; l’ADN conserve les données scientifiques et les scores d’origine.
+        « Je ne sais pas » est une abstention humaine et n’est pas compté comme une erreur.
       </div>
     </div>
     <div class="meta">
       {{ profile_validation_stats.reviewed }} annoté(s) ·
-      {{ profile_validation_stats.ok }} OK ·
-      {{ profile_validation_stats.ko }} KO ·
-      {{ profile_validation_stats.unknown }} UNKNOWN
+      {{ profile_validation_stats.ok }} correct(s) ·
+      {{ profile_validation_stats.ko }} incorrect(s) ·
+      {{ profile_validation_stats.unknown }} sans avis
       {% if profile_validation_stats.accuracy is not null %}
-        · précision sur avis connus {{ (profile_validation_stats.accuracy * 100)|number_format(1) }}%
+        · précision sur avis connus {{ (profile_validation_stats.accuracy * 100)|number_format(1) }} %
       {% endif %}
     </div>
   </div>
@@ -100,54 +100,168 @@
     <table class="profile-validation-table">
       <thead>
         <tr>
-          <th>Item</th>
-          <th>Proposition machine</th>
-          <th>Validation</th>
-          <th>Correction / éléments manquants</th>
-          <th>Certitude</th>
+          <th>Élément</th>
+          <th>Proposition de l’analyse</th>
+          <th>Votre avis</th>
+          <th>Votre correction</th>
+          <th>Degré de certitude</th>
           <th>Commentaire</th>
         </tr>
       </thead>
       <tbody>
       {% for subject in profile_validation_subjects %}
         {% set saved = profile_validations[subject.subject_key] ?? null %}
+
+        {% set ui_label = {
+          'tempo':'Tempo',
+          'time_signature':'Mesure',
+          'key':'Tonalité',
+          'genre':'Genre',
+          'instrumentation':'Instruments entendus',
+          'voice':'Voix',
+          'mood':'Ambiance',
+          'audioset':'Éléments sonores remarquables',
+          'choirs':'Chœurs / voix d’accompagnement'
+        }[subject.item_key] ?? subject.label %}
+
+        {% set ui_question = {
+          'tempo':'Le tempo vous paraît-il correct ?',
+          'time_signature':'La mesure vous paraît-elle correcte ?',
+          'key':'La tonalité vous paraît-elle correcte ?',
+          'genre':'Ce genre correspond-il bien au morceau ?',
+          'instrumentation':'Ces instruments correspondent-ils à ce que vous entendez ?',
+          'voice':'Cette description des voix vous paraît-elle correcte ?',
+          'mood':'Cette ambiance correspond-elle au morceau ?',
+          'audioset':'Ces éléments sonores vous paraissent-ils pertinents ?',
+          'choirs':'Entendez-vous des chœurs ou des voix d’accompagnement ?'
+        }[subject.item_key] ?? 'Cette proposition vous paraît-elle correcte ?' %}
+
+        {% set ui_predicted = subject.predicted_text|replace({
+          'singer-songwriter':'auteur-compositeur-interprète',
+          'world music':'musiques du monde',
+          'soft rock':'rock doux',
+          'ballad':'ballade',
+          'acoustic guitar':'guitare acoustique',
+          'electric guitar':'guitare électrique',
+          'bass guitar':'guitare basse',
+          'acoustic bass':'contrebasse',
+          'drum kit':'batterie',
+          'snare drum':'caisse claire',
+          'kick drum':'grosse caisse',
+          'string section':'section de cordes',
+          'brass section':'section de cuivres',
+          'synthesizer':'synthétiseur',
+          'keyboard (musical)':'clavier',
+          'violin, fiddle':'violon',
+          'violin':'violon',
+          'cello':'violoncelle',
+          'flute':'flûte',
+          'clarinet':'clarinette',
+          'ukulele':'ukulélé',
+          'male lead vocal':'voix principale masculine',
+          'female lead vocal':'voix principale féminine',
+          'backing vocals':'voix d’accompagnement',
+          'vocal harmonies':'harmonies vocales',
+          'choir':'chœurs',
+          'spoken voice':'voix parlée',
+          'raspy singing voice':'voix chantée rauque',
+          'vibrato singing':'chant avec vibrato',
+          'powerful emotional singing':'chant puissant et expressif',
+          'soft intimate singing':'chant doux et intimiste',
+          'instrumental music with no vocals':'musique instrumentale sans voix',
+          'vocal music':'musique vocale',
+          'musical instrument':'instrument de musique',
+          'singing':'chant',
+          'speech':'parole',
+          'reflective':'contemplatif',
+          'intimate':'intimiste',
+          'somber':'sombre',
+          'passionate':'passionné',
+          'mournful':'triste',
+          'longing':'nostalgique',
+          'dramatic':'dramatique',
+          'romantic':'romantique',
+          'melancholic':'mélancolique',
+          'warm':'chaleureux',
+          'dreamy':'rêveur',
+          'nostalgic':'nostalgique',
+          'tense':'tendu',
+          'energetic':'énergique',
+          'joyful':'joyeux',
+          'peaceful':'paisible',
+          'accepted':'retenu',
+          'contextual':'contextuel',
+          'generic':'générique',
+          'uncertain':'incertain',
+          'score':'indice'
+        }) %}
+
         <tr>
           <td>
-            <strong>{{ subject.label }}</strong>
-            <div class="meta">
-              {{ subject.scope == 'gene' ? 'Gène' : 'Région' }}
-              · {{ subject.subject_key }}
-              {% if saved and saved.region_revision_ref %}
-                · {{ saved.region_revision_ref }}
-              {% endif %}
-              {% if saved and saved.gene_revision_ref %}
-                · {{ saved.gene_revision_ref }}
-              {% endif %}
-            </div>
+            <strong>{{ ui_label }}</strong>
+            <div class="meta" style="margin-top:4px">{{ ui_question }}</div>
+            <details style="margin-top:5px">
+              <summary class="meta" style="cursor:pointer">Détails techniques</summary>
+              <div class="meta">
+                {{ subject.scope == 'gene' ? 'Gène' : 'Région' }}
+                · {{ subject.subject_key }}
+                {% if saved and saved.region_revision_ref %}
+                  · {{ saved.region_revision_ref }}
+                {% endif %}
+                {% if saved and saved.gene_revision_ref %}
+                  · {{ saved.gene_revision_ref }}
+                {% endif %}
+              </div>
+            </details>
           </td>
-          <td class="profile-machine-value">{{ subject.predicted_text }}</td>
+
+          <td class="profile-machine-value">{{ ui_predicted }}</td>
+
           <td>
             <input type="hidden"
                    name="annotations[{{ loop.index0 }}][subject]"
                    value="{{ subject.subject_key }}">
-            <div class="profile-verdicts" role="group" aria-label="Validation {{ subject.label }}">
-              <label><input type="radio" name="annotations[{{ loop.index0 }}][verdict]" value="ok" {{ saved and saved.verdict == 'ok' ? 'checked' : '' }}> OK</label>
-              <label><input type="radio" name="annotations[{{ loop.index0 }}][verdict]" value="ko" {{ saved and saved.verdict == 'ko' ? 'checked' : '' }}> KO</label>
-              <label><input type="radio" name="annotations[{{ loop.index0 }}][verdict]" value="unknown" {{ saved and saved.verdict == 'unknown' ? 'checked' : '' }}> UNKNOWN</label>
+            <div class="profile-verdicts" role="group" aria-label="Votre avis — {{ ui_label }}">
+              <label>
+                <input type="radio"
+                       name="annotations[{{ loop.index0 }}][verdict]"
+                       value="ok"
+                       {{ saved and saved.verdict == 'ok' ? 'checked' : '' }}>
+                Correct
+              </label>
+              <label>
+                <input type="radio"
+                       name="annotations[{{ loop.index0 }}][verdict]"
+                       value="ko"
+                       {{ saved and saved.verdict == 'ko' ? 'checked' : '' }}>
+                Incorrect
+              </label>
+              <label>
+                <input type="radio"
+                       name="annotations[{{ loop.index0 }}][verdict]"
+                       value="unknown"
+                       {{ saved and saved.verdict == 'unknown' ? 'checked' : '' }}>
+                Je ne sais pas
+              </label>
             </div>
           </td>
+
           <td class="profile-human-truth">
             <input type="text"
                    name="annotations[{{ loop.index0 }}][human_value]"
                    value="{{ saved ? saved.human_value : '' }}"
-                   placeholder="Correction attendue si KO"
+                   placeholder="Valeur correcte si la proposition est incorrecte"
                    maxlength="500">
+
+            {% if subject.item_key in ['instrumentation','voice','audioset','choirs'] %}
             <input type="text"
                    name="annotations[{{ loop.index0 }}][missing_expected]"
                    value="{{ saved ? saved.missing_expected_text : '' }}"
-                   placeholder="Éléments manquants, séparés par ;"
+                   placeholder="Éléments entendus mais absents, séparés par ;"
                    maxlength="1000">
+            {% endif %}
           </td>
+
           <td>
             <select name="annotations[{{ loop.index0 }}][reviewer_certainty]">
               <option value="" {{ not saved or not saved.reviewer_certainty ? 'selected' : '' }}>—</option>
@@ -156,44 +270,65 @@
               <option value="uncertain" {{ saved and saved.reviewer_certainty == 'uncertain' ? 'selected' : '' }}>Incertain</option>
             </select>
           </td>
+
           <td>
             <input type="text"
                    name="annotations[{{ loop.index0 }}][comment]"
                    value="{{ saved ? saved.comment : '' }}"
-                   placeholder="Contexte libre"
+                   placeholder="Précision utile (facultatif)"
                    maxlength="2000">
           </td>
         </tr>
       {% endfor %}
       </tbody>
     </table>
+
     <div style="margin-top:12px">
       <button type="submit">Enregistrer les annotations</button>
-      <span class="meta">Les lignes sans verdict sélectionné ne sont pas modifiées.</span>
+      <span class="meta">Les lignes sans avis sélectionné ne sont pas modifiées.</span>
     </div>
   </form>
 </div>
-<style>
-.profile-validation-table{width:100%;table-layout:fixed}
-.profile-validation-table th:nth-child(1){width:19%}
-.profile-validation-table th:nth-child(2){width:27%}
-.profile-validation-table th:nth-child(3){width:18%}
-.profile-validation-table th:nth-child(4){width:17%}
-.profile-validation-table th:nth-child(5){width:19%}
-.profile-machine-value{font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-size:11px;overflow-wrap:anywhere}
-.profile-verdicts{display:flex;gap:8px;flex-wrap:wrap}
-.profile-verdicts label{display:inline-flex;align-items:center;gap:3px;font-size:12px;white-space:nowrap}
-.profile-human-validation input[type="text"]{width:100%;box-sizing:border-box}
-.profile-human-truth input+input{margin-top:6px}
-.profile-human-validation select{width:100%;box-sizing:border-box}
-@media(max-width:1000px){.profile-validation-table{table-layout:auto}.profile-validation-table th:nth-child(n){width:auto}}
-</style>
 {% endif %}
-
 {% set pv = selected_profile_run.diagnostics.profile_view ?? {} %}
 {% set pc = pv.counts ?? {} %}
 {% set legacy_gene_key = 'ped' ~ 'als' %}
 {% set genes = pv.genes is defined ? pv.genes : (attribute(pv, legacy_gene_key) ?? []) %}
+{% set pi = pv.instrumentation ?? {} %}
+<div class="card">
+  <h2>Instruments détectés</h2>
+  <div class="meta">Résultat expérimental sur le mix complet. Il ne pilote pas encore STEMS.</div>
+  {% if pi.candidates is defined and pi.candidates %}
+    <div style="margin-top:8px">
+    {% for x in pi.candidates %}
+      <span class="badge ok" style="margin:0 5px 5px 0">{{ x.label }} · {{ x.support }}/3 moteurs</span>
+    {% endfor %}
+    </div>
+  {% else %}
+    <p>Aucun instrument n’est suffisamment confirmé pour l’instant.</p>
+  {% endif %}
+  {% if pi.weak is defined and pi.weak %}
+    <details style="margin-top:8px"><summary>Hypothèses plus faibles</summary>
+      <div class="meta" style="margin-top:6px">{% for x in pi.weak|slice(0,10) %}{{ x.label }}{% if not loop.last %} · {% endif %}{% endfor %}</div>
+    </details>
+  {% endif %}
+</div>
+
+{% set choir = pv.choirs ?? {} %}
+<div class="card">
+  <h2>Chœurs / voix d’accompagnement</h2>
+  {% if choir.decision is defined and choir.decision == 'detected' %}
+    <p><strong>Chœurs détectés</strong></p>
+    <div class="meta">Plusieurs analyses vont dans le même sens. À confirmer avec votre écoute.</div>
+  {% elseif choir.decision is defined and choir.decision == 'possible' %}
+    <p><strong>Chœurs possibles</strong></p>
+    <div class="meta">Il y a des indices, mais PROFILE préfère rester prudent.</div>
+  {% else %}
+    <p><strong>Pas de conclusion fiable</strong></p>
+    <div class="meta">PROFILE s’abstient plutôt que d’affirmer qu’il n’y a pas de chœurs.</div>
+  {% endif %}
+</div>
+
 <div class="card">
   <h2>Gènes PROFILE</h2>
   <div class="meta">{{ pc.ok ?? 0 }} gène(s) OK · {{ pc.skipped ?? 0 }} ignoré(s) · {{ pc.error ?? 0 }} en erreur</div>
@@ -277,7 +412,7 @@
 {% endif %}
 
 <div class="card"><div class="meta">Moteur sémantique : {{ t.backend ?? 'indisponible' }}{% if t.model is defined %} · {{ t.model }}{% endif %}. Les scores CLAP sont relatifs à la taxonomie comparée, pas des probabilités calibrées.</div></div>
-<div class="card"><h2>Genre</h2>{% if t.available ?? false %}<table><thead><tr><th>Tag</th><th>Score</th></tr></thead><tbody>{% for x in t.genre ?? [] %}<tr><td>{{ x.label }}</td><td>{{ (x.score*100)|number_format(1) }}%</td></tr>{% endfor %}</tbody></table>{% else %}<p class="meta">CLAP indisponible. Aucun style n'est inventé.</p>{% endif %}</div>
+<div class="card"><h2>Genre</h2>{% if t.available ?? false %}<table><thead><tr><th>Tag</th><th>Score</th></tr></thead><tbody>{% for x in t.genre ?? [] %}<tr><td>{{ x.label }}</td><td>{{ (x.score*100)|number_format(1) }}%</td></tr>{% endfor %}</tbody></table>{% else %}<p class="meta">Analyse du genre indisponible.</p>{% endif %}</div>
 <div class="card"><h2>Instrumentation probable</h2>{% if t.available ?? false %}<table><thead><tr><th>Instrument</th><th>Score</th></tr></thead><tbody>{% for x in t.instrumentation ?? [] %}<tr><td>{{ x.label }}</td><td>{{ (x.score*100)|number_format(1) }}%</td></tr>{% endfor %}</tbody></table>{% else %}<p class="meta">Classifieur instrument non disponible.</p>{% endif %}</div>
 <div class="card"><h2>Voix</h2>{% if t.available ?? false %}<table><thead><tr><th>Caractéristique</th><th>Score</th></tr></thead><tbody>{% for x in t.voice ?? [] %}<tr><td>{{ x.label }}</td><td>{{ (x.score*100)|number_format(1) }}%</td></tr>{% endfor %}</tbody></table>{% else %}<p class="meta">Classifieur vocal non disponible.</p>{% endif %}</div>
 <div class="card"><h2>Ambiance / mood</h2>{% if t.available ?? false %}<table><thead><tr><th>Tag</th><th>Score</th></tr></thead><tbody>{% for x in t.mood ?? [] %}<tr><td>{{ x.label }}</td><td>{{ (x.score*100)|number_format(1) }}%</td></tr>{% endfor %}</tbody></table>{% else %}<p class="meta">Classifieur mood non disponible.</p>{% endif %}</div>

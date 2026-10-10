@@ -33,6 +33,9 @@ R3B17_PROFILE_CONFIDENCE_V2 = True
 R3B18_PROFILE_CONFIDENCE_V3 = True
 R3B19_PROFILE_SEMANTIC_ROLES = True
 R3B31_GENOMIC_EVOLUTION = True
+R3B35C_CANONICAL_PROFILE = True
+R3B35_PROFILE_FAST_STUDY = True
+R3B35B_CLAP_CHOIRS = True
 
 
 def write_progress(path: Path, percent: int, message: str) -> None:
@@ -224,6 +227,10 @@ def _profile_view(gene_registry_result: dict) -> dict:
         "counts": counts,
         "genes": gene_rows,
         "tonal": consensus.get("tonal") or {},
+        "genre_hierarchy": consensus.get("genre_hierarchy") or {},
+        "vocal_profile": consensus.get("vocal_profile") or {},
+        "instrumentation": consensus.get("instrumentation") or {},
+        "choirs": consensus.get("choirs") or {},
         "audioset": {
             "method": audioset.get("method"),
             "confidence_method": audioset.get("confidence_method"),
@@ -373,6 +380,11 @@ def build_gene_registry(
                     "chunk_seconds": 10.0,
                     "max_chunks": 8,
                     "taxonomy": "ezstudio-r3b10",
+                    "batch_size": max(
+                        1,
+                        int(os.getenv("EZSTUDIO_CLAP_BATCH_SIZE", "2")),
+                    ),
+                    "cuda_batching": True,
                 },
             ),
             semantic_clap_open_vocab.run,
@@ -398,6 +410,10 @@ def build_gene_registry(
                     "max_chunks": 6,
                     "aggregation": "mean",
                     "dtype": "float16",
+                    "batch_size": max(
+                        1,
+                        int(os.getenv("EZSTUDIO_MERT_BATCH_SIZE", "2")),
+                    ),
                 },
             ),
             embedding_mert.run_95m,
@@ -423,6 +439,10 @@ def build_gene_registry(
                     "max_chunks": 6,
                     "aggregation": "mean",
                     "dtype": "float16",
+                    "batch_size": max(
+                        1,
+                        int(os.getenv("EZSTUDIO_MERT_BATCH_SIZE", "2")),
+                    ),
                 },
             ),
             embedding_mert.run_330m,
@@ -471,6 +491,10 @@ def build_gene_registry(
                     "sample_rate": 32000,
                     "chunk_seconds": 10.0,
                     "max_chunks": 8,
+                    "batch_size": max(
+                        1,
+                        int(os.getenv("EZSTUDIO_PASST_BATCH_SIZE", "2")),
+                    ),
                 },
             ),
             semantic_passt.run,
@@ -559,7 +583,7 @@ def main() -> int:
                 .get("source")
                 or ""
             ),
-            "profile_architecture": "genes-r3b31-genomic-evolution",
+            "profile_architecture": "genes-r3b35c-canonical-contract",
             "profile_dependency_root": os.getenv(
                 "EZSTUDIO_PROFILE_DEP_ROOT",
                 r"H:\EZStudio_lab\var\runtime\deps\profile-r3b12",
