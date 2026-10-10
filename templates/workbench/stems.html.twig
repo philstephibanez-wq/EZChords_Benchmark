@@ -54,7 +54,7 @@
   <div class="hero">
     <div>
       <h2>{{ selected_song.title }}{% if selected_song.artist %} — {{ selected_song.artist }}{% endif %}</h2>
-      <p class="meta">Le lecteur consomme uniquement les artefacts STEMS enregistrés dans l'ADN scientifique. Aucun stem caché du benchmark n'est utilisé.</p>
+      <p class="meta">Le lecteur consomme uniquement les artefacts STEMS enregistrés dans le registre scientifique. Aucun stem caché du benchmark n'est utilisé.</p>
     </div>
     <a class="button secondary" href="{{ path('lab_stems',{song:selected_song.id}) }}">Nouvelle analyse STEMS</a>
   </div>
@@ -78,8 +78,8 @@
     <div class="run-state" style="margin-top:12px">
       <span class="badge {{ selected_stems_run.state == 'done' ? 'ok' : 'warn' }}">{{ selected_stems_run.state }}</span>
       <code>{{ selected_stems_run.public_id }}</code>
-      <span class="meta">{{ selected_stems_run.audio_artifacts|length }} piste(s) audio ADN</span>
-      <a href="{{ path('dna_run',{id:selected_stems_run.id}) }}">ADN</a>
+      <span class="meta">{{ selected_stems_run.audio_artifacts|length }} piste(s) audio</span>
+      <a href="{{ path('dna_run',{id:selected_stems_run.id}) }}">Preset</a>
     </div>
 
     {% if selected_stems_run.state == 'done' and selected_stems_run.audio_artifacts %}
@@ -156,7 +156,7 @@
           <div id="selection-summary"></div>
           <p class="meta" style="margin-top:10px">
             Les voix et percussions restent disponibles à l'écoute mais sont exclues par défaut de la preuve harmonique.
-            Les rôles futurs (male/female vocal, organ, saxophone, strings, etc.) apparaîtront automatiquement si le moteur les publie comme artefacts ADN.
+            Les rôles futurs (male/female vocal, organ, saxophone, strings, etc.) apparaîtront automatiquement si le moteur les publie comme artefacts.
           </p>
           <a class="button" id="prepare-chords"
              href="{{ path('lab_chords_experiment',{song:selected_song.id}) }}">
@@ -187,7 +187,7 @@
 
 <section class="card" id="comparison">
   <h2>Comparaisons</h2>
-  <p class="meta">Comparaison multi-runs/moteurs STEMS. Le lecteur permet déjà de basculer entre les runs sans écraser leur ADN.</p>
+  <p class="meta">Comparaison multi-runs/moteurs STEMS. Le lecteur permet déjà de basculer entre les runs sans écraser leur historique.</p>
 </section>
 
 <section class="card" id="logs">

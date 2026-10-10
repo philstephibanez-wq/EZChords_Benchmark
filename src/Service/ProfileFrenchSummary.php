@@ -60,7 +60,7 @@ final class ProfileFrenchSummary
             'choirs'=>$choirs,
             'audioset_accepted'=>array_values(array_unique($accepted)),
             'audioset_contextual'=>array_values(array_unique($contextual)),
-            'notice'=>'Résumé déterministe dérivé de l’ADN. L’instrumentation est expérimentale et ne peut pas encore piloter STEMS tant que le benchmark humain n’est pas validé.',
+            'notice'=>'Résumé déterministe dérivé du run PROFILE. L’instrumentation est expérimentale et ne peut pas encore piloter STEMS tant que le benchmark humain n’est pas validé.',
         ];
     }
 

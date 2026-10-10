@@ -11,24 +11,24 @@ use Symfony\Component\Routing\Attribute\Route;
 
 final class CatalogController extends AbstractController
 {
-    #[Route('/catalogue/{id<\d+>}/region/{region<profile|stems|chords|lyrics>}/delete', name: 'catalog_region_delete', methods: ['POST'])]
-    public function deleteRegion(
+    #[Route('/catalogue/{id<\d+>}/phase/{phase<profile|stems|chords|lyrics>}/delete', name: 'catalog_phase_delete', methods: ['POST'])]
+    public function deletePhase(
         int $id,
-        string $region,
+        string $phase,
         CatalogService $catalog,
         LoggerInterface $logger
     ): Response {
-        $logger->info('catalog_region_delete_requested', [
+        $logger->info('catalog_phase_delete_requested', [
             'song_id' => $id,
-            'region' => $region,
+            'phase' => $phase,
         ]);
 
         try {
-            $result = $catalog->abandonRegion($id, $region);
+            $result = $catalog->abandonPhase($id, $phase);
         } catch (\RuntimeException $e) {
-            $logger->warning('catalog_region_delete_refused', [
+            $logger->warning('catalog_phase_delete_refused', [
                 'song_id' => $id,
-                'region' => $region,
+                'phase' => $phase,
                 'error' => $e->getMessage(),
             ]);
             return new Response(
@@ -37,10 +37,10 @@ final class CatalogController extends AbstractController
             );
         }
 
-        $logger->info('catalog_region_abandon_completed', [
+        $logger->info('catalog_phase_abandon_completed', [
             'song_id' => $id,
-            'region' => $region,
-            'abandoned_regions' => $result['abandoned_regions'] ?? [],
+            'phase' => $phase,
+            'abandoned_phases' => $result['abandoned_phases'] ?? [],
         ]);
         return new RedirectResponse($this->generateUrl('workbench_home'));
     }

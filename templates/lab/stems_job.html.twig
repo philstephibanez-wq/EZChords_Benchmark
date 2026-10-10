@@ -10,7 +10,7 @@
 </div>
 
 <div class="item-tabs">
-<a href="#adn">ADN</a>
+<a href="#preset">ADN</a>
 <a href="#resultat">Résultat</a>
 <a href="#diagnostics">Diagnostics</a>
 <a href="#comparaison">Comparaison</a>
@@ -18,8 +18,8 @@
 <a href="#artefacts">Artefacts</a>
 </div>
 
-<section class="card" id="adn">
-<h2>ADN du run</h2>
+<section class="card" id="preset">
+<h2>Preset du run</h2>
 <div class="kv">
 <div>Job / run</div><div>#{{ job.job_id }}</div>
 <div>Audio hash</div><div><code>{{ job.request.audio_hash ?? '—' }}</code></div>
@@ -29,7 +29,7 @@
 <div>Parent STEMS</div><div>{{ job.request.parent_job_id ?? '—' }}</div>
 <div>Contrat</div><div>{{ job.request.output_contract ?? 'ezstudio.stems.v1' }}</div>
 <div>Run scientifique</div><div>{% if dna_run %}<a href="{{ path('dna_run',{id:dna_run.id}) }}">{{ dna_run.public_id }}</a>{% else %}—{% endif %}</div>
-<div>Artefacts ADN</div><div>{{ dna_run ? dna_run.artifacts|length : 0 }}</div>
+<div>Artefacts du run</div><div>{{ dna_run ? dna_run.artifacts|length : 0 }}</div>
 <div>Source</div><div>{{ job.paths.source ?? '—' }}</div>
 <div>Stockage</div><div>{{ job.paths.storage_root ?? '—' }}</div>
 </div>

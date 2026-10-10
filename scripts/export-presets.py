@@ -26,24 +26,24 @@ def safe(v):
 def tables(c):
     return {r[0] for r in c.execute("select name from sqlite_master where type='table'")}
 
-def genome_payload(c, t, run_ids):
+def preset_payload(c, t, run_ids):
     req={
-        "genome_gene_revisions",
-        "genome_region_revisions",
-        "genome_region_revision_genes",
-        "genome_region_revision_parents",
-        "scientific_run_genome",
-        "genome_region_baselines",
+        "preset_module_revisions",
+        "preset_phase_revisions",
+        "preset_phase_revision_modules",
+        "preset_phase_revision_parents",
+        "scientific_run_preset",
+        "preset_phase_baselines",
     }
     if not req.issubset(t):
         return {
-            "schema":"ezstudio.genome.export.v1",
+            "schema":"ezstudio.preset.export.v1",
             "available":False,
             "run_links":[],
-            "region_revisions":[],
-            "region_parents":[],
-            "region_genes":[],
-            "gene_revisions":[],
+            "phase_revisions":[],
+            "phase_parents":[],
+            "phase_modules":[],
+            "module_revisions":[],
             "baselines":[],
         }
 
@@ -51,9 +51,9 @@ def genome_payload(c, t, run_ids):
         marks=",".join("?" for _ in run_ids)
         run_links=[decode(r) for r in rows(
             c,
-            f"""select sg.*,rr.region,rr.revision_ref,rr.fingerprint
-                from scientific_run_genome sg
-                join genome_region_revisions rr on rr.id=sg.region_revision_id
+            f"""select sg.*,rr.phase,rr.revision_ref,rr.fingerprint
+                from scientific_run_preset sg
+                join preset_phase_revisions rr on rr.id=sg.phase_revision_id
                 where sg.run_id in ({marks})
                 order by sg.run_id""",
             tuple(run_ids)
@@ -61,82 +61,82 @@ def genome_payload(c, t, run_ids):
     else:
         run_links=[]
 
-    regions=sorted({str(x["region"]) for x in run_links if x.get("region")})
-    if not regions:
+    phases=sorted({str(x["phase"]) for x in run_links if x.get("phase")})
+    if not phases:
         return {
-            "schema":"ezstudio.genome.export.v1",
+            "schema":"ezstudio.preset.export.v1",
             "available":True,
             "run_links":run_links,
-            "region_revisions":[],
-            "region_parents":[],
-            "region_genes":[],
-            "gene_revisions":[],
+            "phase_revisions":[],
+            "phase_parents":[],
+            "phase_modules":[],
+            "module_revisions":[],
             "baselines":[],
         }
 
-    rmarks=",".join("?" for _ in regions)
-    region_revisions=[decode(r) for r in rows(
+    rmarks=",".join("?" for _ in phases)
+    phase_revisions=[decode(r) for r in rows(
         c,
-        f"""select * from genome_region_revisions
-            where region in ({rmarks})
-            order by region,revision_number""",
-        tuple(regions)
+        f"""select * from preset_phase_revisions
+            where phase in ({rmarks})
+            order by phase,revision_number""",
+        tuple(phases)
     )]
-    ids=[int(x["id"]) for x in region_revisions]
+    ids=[int(x["id"]) for x in phase_revisions]
 
     if ids:
         imarks=",".join("?" for _ in ids)
-        region_parents=[decode(r) for r in rows(
+        phase_parents=[decode(r) for r in rows(
             c,
-            f"""select * from genome_region_revision_parents
-                where child_region_revision_id in ({imarks})
-                   or parent_region_revision_id in ({imarks})
-                order by child_region_revision_id,parent_region_revision_id""",
+            f"""select * from preset_phase_revision_parents
+                where child_phase_revision_id in ({imarks})
+                   or parent_phase_revision_id in ({imarks})
+                order by child_phase_revision_id,parent_phase_revision_id""",
             tuple(ids+ids)
         )]
-        region_genes=[decode(r) for r in rows(
+        phase_modules=[decode(r) for r in rows(
             c,
-            f"""select * from genome_region_revision_genes
-                where region_revision_id in ({imarks})
-                order by region_revision_id,position""",
+            f"""select * from preset_phase_revision_modules
+                where phase_revision_id in ({imarks})
+                order by phase_revision_id,position""",
             tuple(ids)
         )]
     else:
-        region_parents=[]
-        region_genes=[]
+        phase_parents=[]
+        phase_modules=[]
 
-    gids=sorted({int(x["gene_revision_id"]) for x in region_genes})
+    gids=sorted({int(x["module_revision_id"]) for x in phase_modules})
     if gids:
         gmarks=",".join("?" for _ in gids)
-        gene_revisions=[decode(r) for r in rows(
+        module_revisions=[decode(r) for r in rows(
             c,
-            f"""select * from genome_gene_revisions
+            f"""select * from preset_module_revisions
                 where id in ({gmarks})
-                order by gene_key,revision_number""",
+                order by module_key,revision_number""",
             tuple(gids)
         )]
     else:
-        gene_revisions=[]
+        module_revisions=[]
 
     baselines=[decode(r) for r in rows(
         c,
         f"""select b.*,rr.revision_ref,rr.fingerprint
-            from genome_region_baselines b
-            join genome_region_revisions rr on rr.id=b.region_revision_id
-            where b.region in ({rmarks})
-            order by b.region""",
-        tuple(regions)
+            from preset_phase_baselines b
+            join preset_phase_revisions rr on rr.id=b.phase_revision_id
+            where b.phase in ({rmarks})
+            order by b.phase""",
+        tuple(phases)
     )]
 
     return {
-        "schema":"ezstudio.genome.export.v1",
+        "schema":"ezstudio.preset.export.v1",
         "available":True,
-        "regions":regions,
+        "phases":phases,
         "run_links":run_links,
-        "region_revisions":region_revisions,
-        "region_parents":region_parents,
-        "region_genes":region_genes,
-        "gene_revisions":gene_revisions,
+        "phase_revisions":phase_revisions,
+        "phase_parents":phase_parents,
+        "phase_modules":phase_modules,
+        "module_revisions":module_revisions,
         "baselines":baselines,
     }
 
@@ -229,34 +229,34 @@ def main():
             "model_name":r.get("model_name"),
         }
 
-    genome=genome_payload(c,t,[int(r["id"]) for r in runs])
+    preset=preset_payload(c,t,[int(r["id"]) for r in runs])
 
     manifest={
-        "schema":"ezstudio.chromosome.adn.v2",
+        "schema":"ezstudio.analysis-chain.preset-bundle.v1",
         "generated_at":datetime.now(timezone.utc).isoformat(),
         "song":song,
         "catalog_song_ids":ids,
-        "chromosome":{
-            "regions":latest,
+        "analysis_chain":{
+            "phases":latest,
             "integrity":{
                 "order":list(REGIONS),
                 "present":dict(zip(REGIONS,present)),
                 "valid_prefix":valid,
             },
         },
-        "genomic_evolution":{
-            "schema":genome["schema"],
-            "available":genome["available"],
-            "regions":genome.get("regions",[]),
-            "baselines":genome.get("baselines",[]),
+        "preset_evolution":{
+            "schema":preset["schema"],
+            "available":preset["available"],
+            "phases":preset.get("phases",[]),
+            "baselines":preset.get("baselines",[]),
         },
         "counts":{
             "scientific_runs":len(runs),
             "analysis_jobs":len(jobs),
             "legacy_chords_runs":len(legacy),
             "profile_human_validations":len(human_validations),
-            "genome_region_revisions":len(genome.get("region_revisions",[])),
-            "genome_gene_revisions":len(genome.get("gene_revisions",[])),
+            "preset_phase_revisions":len(preset.get("phase_revisions",[])),
+            "preset_module_revisions":len(preset.get("module_revisions",[])),
         },
         "binary_audio_included":False,
     }
@@ -268,42 +268,42 @@ def main():
         z.writestr("sqlite/analysis_jobs.json",json.dumps(jobs,ensure_ascii=False,indent=2,default=str)+"\n")
         z.writestr("sqlite/legacy_chords_runs.json",json.dumps(legacy,ensure_ascii=False,indent=2,default=str)+"\n")
         z.writestr("sqlite/profile_human_validations.json",json.dumps(human_validations,ensure_ascii=False,indent=2,default=str)+"\n")
-        links=genome.get("run_links",[])
+        links=preset.get("run_links",[])
         for run in runs:
             rid=int(run["id"])
-            region=str(run.get("item") or "unknown")
-            pid=str(run.get("public_id") or f"{region}-{rid}")
+            phase=str(run.get("item") or "unknown")
+            pid=str(run.get("public_id") or f"{phase}-{rid}")
             payload=dict(run)
             payload["artifacts"]=arts.get(rid,[])
-            payload["genome"]=next((x for x in links if int(x["run_id"])==rid),None)
+            payload["preset"]=next((x for x in links if int(x["run_id"])==rid),None)
             z.writestr(
-                f"sqlite/regions/{safe(region)}/{safe(pid)}.json",
+                f"sqlite/phases/{safe(phase)}/{safe(pid)}.json",
                 json.dumps(payload,ensure_ascii=False,indent=2,default=str)+"\n"
             )
             for art in arts.get(rid,[]):
                 p=Path(str(art.get("path") or ""))
                 if p.is_file() and p.suffix.lower() in TEXT_SUFFIXES and p.stat().st_size<=25*1024*1024:
-                    z.write(p,f"artifacts/{safe(region)}/{safe(pid)}/{safe(p.name)}")
+                    z.write(p,f"artifacts/{safe(phase)}/{safe(pid)}/{safe(p.name)}")
 
         for name in (
-            "run_links","region_revisions","region_parents",
-            "region_genes","gene_revisions","baselines"
+            "run_links","phase_revisions","phase_parents",
+            "phase_modules","module_revisions","baselines"
         ):
             z.writestr(
-                f"genome/{name}.json",
-                json.dumps(genome.get(name,[]),ensure_ascii=False,indent=2,default=str)+"\n"
+                f"preset/{name}.json",
+                json.dumps(preset.get(name,[]),ensure_ascii=False,indent=2,default=str)+"\n"
             )
 
         z.writestr(
             "README.txt",
-            "EZStudio_lab chromosome ADN bundle v2\n"
+            "EZStudio_lab Preset bundle v1\n"
             "Two orthogonal histories are preserved:\n"
             "1) scientific runs per song;\n"
-            "2) genomic evolution of region/gene revisions.\n"
+            "2) genomic evolution of phase/gene revisions.\n"
             "No heavy audio binaries included.\n"
         )
 
-    print(f"EZSTUDIO_CHROMOSOME_ADN_EXPORT_V2_OK {out}")
+    print(f"EZSTUDIO_CHROMOSOME_PRESET_EXPORT_V2_OK {out}")
     return 0
 
 if __name__=="__main__":

@@ -97,28 +97,28 @@ final class ProfileDnaExecutionService
             'audio_sha256' => $result['audio_sha256'] ?? '',
         ], 'PROFILE JSON');
 
-        $genomeManifest = $result['genome'] ?? null;
-        if (!is_array($genomeManifest)) {
-            throw new \RuntimeException('profile_genome_manifest_missing');
+        $presetManifest = $result['preset'] ?? $result['genome'] ?? null;
+        if (!is_array($presetManifest)) {
+            throw new \RuntimeException('profile_preset_manifest_missing');
         }
-        $regionRevision = $this->presets->captureRunGenome(
+        $phaseRevision = $this->presets->captureRunPreset(
             $runId,
             'profile',
-            $genomeManifest,
+            $presetManifest,
         );
 
         $metrics = is_array($result['characteristics'] ?? null) ? $result['characteristics'] : [];
-        $diagnostics = ['tagging' => $result['tagging'] ?? [], 'profile_view' => $result['profile_view'] ?? [], 'gene_registry' => $result['gene_registry'] ?? [], 'warnings' => $result['warnings'] ?? []];
+        $diagnostics = ['tagging' => $result['tagging'] ?? [], 'profile_view' => $result['profile_view'] ?? [], 'module_registry' => $result['module_registry'] ?? $result['gene_registry'] ?? [], 'warnings' => $result['warnings'] ?? []];
         $environment = is_array($result['environment'] ?? null) ? $result['environment'] : [];
         $this->runRegistry->setLabel(
             $runId,
-            'genome_region_revision',
-            (string)$regionRevision['revision_ref']
+            'preset_phase_revision',
+            (string)$phaseRevision['revision_ref']
         );
         $this->runRegistry->setLabel(
             $runId,
-            'genome_region_fingerprint',
-            (string)$regionRevision['fingerprint']
+            'preset_phase_fingerprint',
+            (string)$phaseRevision['fingerprint']
         );
         $this->runRegistry->setLabel($runId, 'progress', '100');
         $this->runRegistry->setLabel($runId, 'automatic_next_stage', 'false');

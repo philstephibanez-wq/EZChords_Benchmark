@@ -72,20 +72,20 @@
 {% endfor %}
 
 <p class="meta">
-Les deux sélections sont indépendantes et font partie de l'ADN du run. Modifier une seule case crée une nouvelle branche scientifique.
+Les deux sélections sont indépendantes et font partie de le Preset du run. Modifier une seule case crée une nouvelle branche scientifique.
 </p>
 <button type="submit">Lancer l’analyse CHORDS versionnée</button>
 </form>
 {% else %}
-<p>Aucun run STEMS terminé avec artefacts ADN. Terminer/synchroniser STEMS avant CHORDS.</p>
+<p>Aucun run STEMS terminé avec artefacts du run. Terminer/synchroniser STEMS avant CHORDS.</p>
 <a class="button" href="{{ path('lab_stems',{song:selected_song.id}) }}">Ouvrir STEMS</a>
 {% endif %}
 </div>
 
 <div class="card">
-<h2>Runs CHORDS ADN</h2>
+<h2>Runs CHORDS</h2>
 <table>
-<thead><tr><th>Run</th><th>État</th><th>Moteur</th><th>Créé</th><th>ADN</th></tr></thead>
+<thead><tr><th>Run</th><th>État</th><th>Moteur</th><th>Créé</th><th>Preset</th></tr></thead>
 <tbody>
 {% for r in chords_runs %}
 <tr>
@@ -93,7 +93,7 @@ Les deux sélections sont indépendantes et font partie de l'ADN du run. Modifie
 <td><a class="button secondary" href="{{ path('dna_run',{id:r.id}) }}">Ouvrir</a></td>
 </tr>
 {% else %}
-<tr><td colspan="5">Aucun run CHORDS ADN.</td></tr>
+<tr><td colspan="5">Aucun run CHORDS.</td></tr>
 {% endfor %}
 </tbody>
 </table>

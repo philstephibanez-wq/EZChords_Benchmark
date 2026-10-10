@@ -16,15 +16,15 @@ final class ProfileValidationService
 CREATE TABLE IF NOT EXISTS profile_human_validations (
     run_id INTEGER NOT NULL,
     subject_key TEXT NOT NULL,
-    scope TEXT NOT NULL CHECK(scope IN ('region','gene')),
+    scope TEXT NOT NULL CHECK(scope IN ('phase','module')),
     item_key TEXT NOT NULL,
-    gene_key TEXT,
+    module_key TEXT,
     predicted_json TEXT NOT NULL DEFAULT '{}',
     verdict TEXT NOT NULL CHECK(verdict IN ('ok','ko','unknown')),
     human_value TEXT NOT NULL DEFAULT '',
     comment TEXT NOT NULL DEFAULT '',
-    region_revision_ref TEXT,
-    gene_revision_ref TEXT,
+    phase_revision_ref TEXT,
+    module_revision_ref TEXT,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL,
     PRIMARY KEY(run_id, subject_key),
@@ -33,11 +33,11 @@ CREATE TABLE IF NOT EXISTS profile_human_validations (
 CREATE INDEX IF NOT EXISTS idx_profile_human_validation_subject
 ON profile_human_validations(subject_key, verdict);
 
-CREATE INDEX IF NOT EXISTS idx_profile_human_validation_region_revision
-ON profile_human_validations(region_revision_ref, verdict);
+CREATE INDEX IF NOT EXISTS idx_profile_human_validation_phase_revision
+ON profile_human_validations(phase_revision_ref, verdict);
 
-CREATE INDEX IF NOT EXISTS idx_profile_human_validation_gene_revision
-ON profile_human_validations(gene_revision_ref, verdict);
+CREATE INDEX IF NOT EXISTS idx_profile_human_validation_module_revision
+ON profile_human_validations(module_revision_ref, verdict);
 SQL);
 
         $this->ensureColumn(
@@ -140,7 +140,7 @@ SQL);
                 $text .= ' · score '.number_format((float)$best['score'] * 100, 1).' %';
             }
             $subjects[] = $this->subject(
-                'region:'.$family,
+                'phase:'.$family,
                 $family,
                 $label,
                 $best,
@@ -247,17 +247,17 @@ SQL);
             $allowed[(string)$subject['subject_key']] = $subject;
         }
 
-        [$regionRevision, $geneRevisions] = $this->presetsRefs($runId);
+        [$phaseRevision, $moduleRevisions] = $this->presetRefs($runId);
         $pdo = $this->db->pdo();
         $pdo->beginTransaction();
         try {
             $now = gmdate('c');
             $upsert = $pdo->prepare(
                 'INSERT INTO profile_human_validations(
-                    run_id,subject_key,scope,item_key,gene_key,
+                    run_id,subject_key,scope,item_key,module_key,
                     predicted_json,verdict,human_value,
                     missing_expected_json,reviewer_certainty,comment,
-                    region_revision_ref,gene_revision_ref,
+                    phase_revision_ref,module_revision_ref,
                     validation_schema,created_at,updated_at
                  ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
                  ON CONFLICT(run_id,subject_key) DO UPDATE SET
@@ -267,8 +267,8 @@ SQL);
                     missing_expected_json=excluded.missing_expected_json,
                     reviewer_certainty=excluded.reviewer_certainty,
                     comment=excluded.comment,
-                    region_revision_ref=excluded.region_revision_ref,
-                    gene_revision_ref=excluded.gene_revision_ref,
+                    phase_revision_ref=excluded.phase_revision_ref,
+                    module_revision_ref=excluded.module_revision_ref,
                     validation_schema=excluded.validation_schema,
                     updated_at=excluded.updated_at'
             );
@@ -291,9 +291,9 @@ SQL);
                 }
 
                 $subject = $allowed[$subjectKey];
-                $geneKey = $subject['gene_key'];
-                $geneRevision = is_string($geneKey) && isset($geneRevisions[$geneKey])
-                    ? $geneRevisions[$geneKey]
+                $moduleKey = $subject['module_key'];
+                $moduleRevision = is_string($moduleKey) && isset($moduleRevisions[$moduleKey])
+                    ? $moduleRevisions[$moduleKey]
                     : null;
 
                 $humanValue = mb_substr(trim((string)($annotation['human_value'] ?? '')), 0, 500);
@@ -305,15 +305,15 @@ SQL);
                     $subjectKey,
                     (string)$subject['scope'],
                     (string)$subject['item_key'],
-                    $geneKey,
+                    $moduleKey,
                     json_encode($subject['predicted'], JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES),
                     $verdict,
                     $humanValue,
                     json_encode($missingExpected, JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES),
                     $certainty,
                     $comment,
-                    $regionRevision,
-                    $geneRevision,
+                    $phaseRevision,
+                    $moduleRevision,
                     self::VALIDATION_SCHEMA,
                     $now,
                     $now,
@@ -435,9 +435,9 @@ SQL);
 
         return [
             'subject_key' => $subjectKey,
-            'scope' => 'region',
+            'scope' => 'phase',
             'item_key' => $itemKey,
-            'gene_key' => null,
+            'module_key' => null,
             'label' => $label,
             'question' => $question,
             'correction_hint' => $correctionHint,
@@ -544,36 +544,36 @@ SQL);
         return $best;
     }
 
-    private function genomeRefs(int $runId): array
+    private function presetRefs(int $runId): array
     {
         $tables = $this->tableNames();
-        if (!isset($tables['scientific_run_genome']) || !isset($tables['genome_region_revisions'])) {
+        if (!isset($tables['scientific_run_preset']) || !isset($tables['preset_phase_revisions'])) {
             return [null, []];
         }
         $stmt = $this->db->pdo()->prepare(
             'SELECT rr.id,rr.revision_ref
-             FROM scientific_run_genome sg
-             JOIN genome_region_revisions rr ON rr.id=sg.region_revision_id
+             FROM scientific_run_preset sg
+             JOIN preset_phase_revisions rr ON rr.id=sg.phase_revision_id
              WHERE sg.run_id=?'
         );
         $stmt->execute([$runId]);
-        $region = $stmt->fetch();
-        if (!$region) return [null, []];
+        $phase = $stmt->fetch();
+        if (!$phase) return [null, []];
 
-        $genes = [];
-        if (isset($tables['genome_region_revision_genes']) && isset($tables['genome_gene_revisions'])) {
+        $modules = [];
+        if (isset($tables['preset_phase_revision_modules']) && isset($tables['preset_module_revisions'])) {
             $stmt = $this->db->pdo()->prepare(
-                'SELECT g.gene_key,g.revision_ref
-                 FROM genome_region_revision_genes rg
-                 JOIN genome_gene_revisions g ON g.id=rg.gene_revision_id
-                 WHERE rg.region_revision_id=?'
+                'SELECT g.module_key,g.revision_ref
+                 FROM preset_phase_revision_modules rg
+                 JOIN preset_module_revisions g ON g.id=rg.module_revision_id
+                 WHERE rg.phase_revision_id=?'
             );
-            $stmt->execute([(int)$region['id']]);
+            $stmt->execute([(int)$phase['id']]);
             foreach ($stmt->fetchAll() as $row) {
-                $genes[(string)$row['gene_key']] = (string)$row['revision_ref'];
+                $modules[(string)$row['module_key']] = (string)$row['revision_ref'];
             }
         }
-        return [(string)$region['revision_ref'], $genes];
+        return [(string)$phase['revision_ref'], $modules];
     }
 
     private function tableNames(): array

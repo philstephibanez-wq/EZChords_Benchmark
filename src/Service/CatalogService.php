@@ -69,14 +69,14 @@ final class CatalogService
         return $out;
     }
 
-    public function abandonRegion(
+    public function abandonPhase(
         int $songId,
-        string $region
+        string $phase
     ): array {
         $order = ['profile', 'stems', 'chords', 'lyrics'];
-        $offset = array_search($region, $order, true);
+        $offset = array_search($phase, $order, true);
         if ($offset === false) {
-            throw new \InvalidArgumentException('catalog_invalid_region');
+            throw new \InvalidArgumentException('catalog_invalid_phase');
         }
         $targets = array_slice($order, (int)$offset);
 
@@ -103,10 +103,10 @@ final class CatalogService
             $songIds = [$songId];
         }
 
-        $owner = 'catalog-abandon-region-'
-            .$songId.'-'.$region.'-'.bin2hex(random_bytes(8));
+        $owner = 'catalog-abandon-phase-'
+            .$songId.'-'.$phase.'-'.bin2hex(random_bytes(8));
 
-        $this->db->acquireAnalysisRegionLocks(
+        $this->db->acquireAnalysisPhaseLocks(
             $songIds,
             $targets,
             $owner,
@@ -114,7 +114,7 @@ final class CatalogService
         );
 
         try {
-            $active = $this->db->requestRegionCancellation(
+            $active = $this->db->requestPhaseCancellation(
                 $songIds,
                 $targets,
                 60
@@ -129,7 +129,7 @@ final class CatalogService
                     )
                 );
                 throw new \RuntimeException(
-                    'catalog_region_cancel_pending:jobs='.$ids
+                    'catalog_phase_cancel_pending:jobs='.$ids
                 );
             }
 
@@ -137,7 +137,7 @@ final class CatalogService
                 return [
                     'song_ids' => $songIds,
                     'audio_sha256' => $hash,
-                    'abandoned_regions' => $targets,
+                    'abandoned_phases' => $targets,
                     'abandoned_run_ids' => [],
                 ];
             }
@@ -190,7 +190,7 @@ final class CatalogService
                         foreach ($runIds as $runId) {
                             $label->execute([$runId, 'lifecycle', 'abandoned']);
                             $label->execute([$runId, 'abandoned_at', $now]);
-                            $label->execute([$runId, 'abandoned_from_region', $region]);
+                            $label->execute([$runId, 'abandoned_from_phase', $phase]);
                         }
                     }
 
@@ -206,20 +206,20 @@ final class CatalogService
             return [
                 'song_ids' => $songIds,
                 'audio_sha256' => $hash,
-                'abandoned_regions' => $targets,
+                'abandoned_phases' => $targets,
                 'abandoned_run_ids' => $runIds,
             ];
         } finally {
-            $this->db->releaseAnalysisRegionLocks($owner);
+            $this->db->releaseAnalysisPhaseLocks($owner);
         }
     }
 
-    public function deleteRegion(int $songId, string $region): array
+    public function deletePhase(int $songId, string $phase): array
     {
         $order = ['profile', 'stems', 'chords', 'lyrics'];
-        $offset = array_search($region, $order, true);
+        $offset = array_search($phase, $order, true);
         if ($offset === false) {
-            throw new \InvalidArgumentException('catalog_invalid_region');
+            throw new \InvalidArgumentException('catalog_invalid_phase');
         }
 
         $targets = array_slice($order, (int)$offset);
@@ -248,10 +248,10 @@ final class CatalogService
             $songIds = [$songId];
         }
 
-        $owner = 'catalog-delete-region-'
-            .$songId.'-'.$region.'-'.bin2hex(random_bytes(8));
+        $owner = 'catalog-delete-phase-'
+            .$songId.'-'.$phase.'-'.bin2hex(random_bytes(8));
 
-        $this->db->acquireAnalysisRegionLocks(
+        $this->db->acquireAnalysisPhaseLocks(
             $songIds,
             $targets,
             $owner,
@@ -259,7 +259,7 @@ final class CatalogService
         );
 
         try {
-            $active = $this->db->requestRegionCancellation(
+            $active = $this->db->requestPhaseCancellation(
                 $songIds,
                 $targets,
                 60
@@ -271,7 +271,7 @@ final class CatalogService
                     $active
                 ));
                 throw new \RuntimeException(
-                    'catalog_region_cancel_pending:jobs='.$ids
+                    'catalog_phase_cancel_pending:jobs='.$ids
                 );
             }
 
@@ -327,7 +327,7 @@ final class CatalogService
 
                 if ((int)$stmt->fetchColumn() > 0) {
                     throw new \RuntimeException(
-                        'catalog_region_has_external_child_runs'
+                        'catalog_phase_has_external_child_runs'
                     );
                 }
 
@@ -350,7 +350,7 @@ final class CatalogService
 
                 if ((int)$stmt->fetchColumn() > 0) {
                     throw new \RuntimeException(
-                        'catalog_region_artifacts_still_used'
+                        'catalog_phase_artifacts_still_used'
                     );
                 }
 
@@ -577,10 +577,10 @@ final class CatalogService
             return [
                 'song_ids' => $songIds,
                 'audio_sha256' => $hash,
-                'deleted_regions' => $targets,
+                'deleted_phases' => $targets,
             ];
         } finally {
-            $this->db->releaseAnalysisRegionLocks($owner);
+            $this->db->releaseAnalysisPhaseLocks($owner);
         }
     }
 

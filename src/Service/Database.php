@@ -728,7 +728,7 @@ SQL;
                        FROM analysis_resource_locks l
                        WHERE l.song_id=j.song_id
                          AND l.expires_at_epoch > CAST(strftime('%s','now') AS INTEGER)
-                         AND l.region = CASE
+                         AND l.phase = CASE
                              WHEN j.kind IN ('benchmark','chords','chords_scientific') THEN 'chords'
                              ELSE j.kind
                          END
@@ -1155,18 +1155,18 @@ SQL;
         $this->pdo->exec(<<<'SQL'
 CREATE TABLE IF NOT EXISTS analysis_resource_locks (
     song_id INTEGER NOT NULL,
-    region TEXT NOT NULL,
+    phase TEXT NOT NULL,
     operation TEXT NOT NULL,
     owner TEXT NOT NULL,
     created_at TEXT NOT NULL,
     expires_at_epoch INTEGER NOT NULL,
-    PRIMARY KEY(song_id, region),
+    PRIMARY KEY(song_id, phase),
     FOREIGN KEY(song_id) REFERENCES songs(id) ON DELETE CASCADE
 );
 CREATE INDEX IF NOT EXISTS idx_analysis_resource_locks_owner
 ON analysis_resource_locks(owner);
 
-CREATE TRIGGER IF NOT EXISTS trg_analysis_jobs_region_lock_insert
+CREATE TRIGGER IF NOT EXISTS trg_analysis_jobs_phase_lock_insert
 BEFORE INSERT ON analysis_jobs
 BEGIN
     SELECT CASE WHEN EXISTS(
@@ -1174,14 +1174,14 @@ BEGIN
         FROM analysis_resource_locks l
         WHERE l.song_id = NEW.song_id
           AND l.expires_at_epoch > CAST(strftime('%s','now') AS INTEGER)
-          AND l.region = CASE
+          AND l.phase = CASE
               WHEN NEW.kind IN ('benchmark','chords','chords_scientific') THEN 'chords'
               ELSE NEW.kind
           END
-    ) THEN RAISE(ABORT, 'analysis_region_locked') END;
+    ) THEN RAISE(ABORT, 'analysis_phase_locked') END;
 END;
 
-CREATE TRIGGER IF NOT EXISTS trg_analysis_jobs_region_lock_claim
+CREATE TRIGGER IF NOT EXISTS trg_analysis_jobs_phase_lock_claim
 BEFORE UPDATE OF status ON analysis_jobs
 WHEN NEW.status='running' AND OLD.status='queued'
 BEGIN
@@ -1190,16 +1190,16 @@ BEGIN
         FROM analysis_resource_locks l
         WHERE l.song_id = NEW.song_id
           AND l.expires_at_epoch > CAST(strftime('%s','now') AS INTEGER)
-          AND l.region = CASE
+          AND l.phase = CASE
               WHEN NEW.kind IN ('benchmark','chords','chords_scientific') THEN 'chords'
               ELSE NEW.kind
           END
-    ) THEN RAISE(ABORT, 'analysis_region_locked') END;
+    ) THEN RAISE(ABORT, 'analysis_phase_locked') END;
 END;
 SQL);
     }
 
-    private function regionKindSql(string $alias = 'analysis_jobs'): string
+    private function phaseKindSql(string $alias = 'analysis_jobs'): string
     {
         return "CASE
             WHEN {$alias}.kind IN ('benchmark','chords','chords_scientific') THEN 'chords'
@@ -1207,9 +1207,9 @@ SQL);
         END";
     }
 
-    public function acquireAnalysisRegionLocks(
+    public function acquireAnalysisPhaseLocks(
         array $songIds,
-        array $regions,
+        array $phases,
         string $owner,
         int $ttlSeconds = 300
     ): void {
@@ -1217,14 +1217,14 @@ SQL);
             array_map('intval', $songIds),
             static fn(int $id): bool => $id > 0
         )));
-        $regions = array_values(array_unique(array_filter(
-            array_map('strval', $regions),
-            static fn(string $region): bool => in_array(
-                $region, ['profile','stems','chords','lyrics'], true
+        $phases = array_values(array_unique(array_filter(
+            array_map('strval', $phases),
+            static fn(string $phase): bool => in_array(
+                $phase, ['profile','stems','chords','lyrics'], true
             )
         )));
-        if ($songIds === [] || $regions === []) {
-            throw new \InvalidArgumentException('analysis_region_lock_scope_empty');
+        if ($songIds === [] || $phases === []) {
+            throw new \InvalidArgumentException('analysis_phase_lock_scope_empty');
         }
 
         $pdo = $this->pdo();
@@ -1244,10 +1244,10 @@ SQL);
                  ) VALUES(?,?,?,?,?,?)'
             );
             foreach ($songIds as $songId) {
-                foreach ($regions as $region) {
+                foreach ($phases as $phase) {
                     $insert->execute([
                         $songId,
-                        $region,
+                        $phase,
                         'delete',
                         $owner,
                         $now,
@@ -1261,7 +1261,7 @@ SQL);
                 $pdo->rollBack();
             }
             throw new \RuntimeException(
-                'analysis_region_busy_or_locked:'.$e->getMessage(),
+                'analysis_phase_busy_or_locked:'.$e->getMessage(),
                 0,
                 $e
             );
@@ -1273,30 +1273,30 @@ SQL);
         }
     }
 
-    public function releaseAnalysisRegionLocks(string $owner): void
+    public function releaseAnalysisPhaseLocks(string $owner): void
     {
         $this->pdo()->prepare(
             'DELETE FROM analysis_resource_locks WHERE owner=?'
         )->execute([$owner]);
     }
 
-    public function requestRegionCancellation(
+    public function requestPhaseCancellation(
         array $songIds,
-        array $regions,
+        array $phases,
         int $staleSeconds = 60
     ): array {
         $songIds = array_values(array_unique(array_filter(
             array_map('intval', $songIds),
             static fn(int $id): bool => $id > 0
         )));
-        $regions = array_values(array_unique(array_map('strval', $regions)));
-        if ($songIds === [] || $regions === []) {
+        $phases = array_values(array_unique(array_map('strval', $phases)));
+        if ($songIds === [] || $phases === []) {
             return [];
         }
 
         $songMarks = implode(',', array_fill(0, count($songIds), '?'));
-        $regionMarks = implode(',', array_fill(0, count($regions), '?'));
-        $regionExpr = $this->regionKindSql('analysis_jobs');
+        $phaseMarks = implode(',', array_fill(0, count($phases), '?'));
+        $phaseExpr = $this->phaseKindSql('analysis_jobs');
         $pdo = $this->pdo();
         $now = gmdate('c');
         $cutoff = gmdate('c', time() - max(30, $staleSeconds));
@@ -1306,36 +1306,36 @@ SQL);
             $stmt = $pdo->prepare(
                 "UPDATE analysis_jobs
                  SET status='cancelled',
-                     error='region_delete_cancelled_before_claim',
+                     error='phase_delete_cancelled_before_claim',
                      updated_at=?
                  WHERE song_id IN ($songMarks)
-                   AND $regionExpr IN ($regionMarks)
+                   AND $phaseExpr IN ($phaseMarks)
                    AND status='queued'"
             );
-            $stmt->execute([$now, ...$songIds, ...$regions]);
+            $stmt->execute([$now, ...$songIds, ...$phases]);
 
             $stmt = $pdo->prepare(
                 "UPDATE analysis_jobs
                  SET status='cancelled',
-                     error='region_delete_stale_job_reconciled',
+                     error='phase_delete_stale_job_reconciled',
                      updated_at=?
                  WHERE updated_at <= ?
                    AND song_id IN ($songMarks)
-                   AND $regionExpr IN ($regionMarks)
+                   AND $phaseExpr IN ($phaseMarks)
                    AND status IN ('running','cancelling')"
             );
-            $stmt->execute([$now, $cutoff, ...$songIds, ...$regions]);
+            $stmt->execute([$now, $cutoff, ...$songIds, ...$phases]);
 
             $stmt = $pdo->prepare(
                 "UPDATE analysis_jobs
                  SET status='cancelling',
-                     error='region_delete_cancellation_requested',
+                     error='phase_delete_cancellation_requested',
                      updated_at=?
                  WHERE song_id IN ($songMarks)
-                   AND $regionExpr IN ($regionMarks)
+                   AND $phaseExpr IN ($phaseMarks)
                    AND status='running'"
             );
-            $stmt->execute([$now, ...$songIds, ...$regions]);
+            $stmt->execute([$now, ...$songIds, ...$phases]);
 
             if ($this->tableExistsForMutex('scientific_runs')) {
                 $stmt = $pdo->prepare(
@@ -1346,13 +1346,13 @@ SQL);
                          SELECT scientific_run_id
                          FROM analysis_jobs
                          WHERE song_id IN ($songMarks)
-                           AND $regionExpr IN ($regionMarks)
+                           AND $phaseExpr IN ($phaseMarks)
                            AND status='cancelled'
                            AND scientific_run_id IS NOT NULL
                      )
                        AND state!='done'"
                 );
-                $stmt->execute([$now, ...$songIds, ...$regions]);
+                $stmt->execute([$now, ...$songIds, ...$phases]);
             }
 
             $pdo->commit();
@@ -1363,33 +1363,33 @@ SQL);
             throw $e;
         }
 
-        return $this->activeRegionJobs($songIds, $regions);
+        return $this->activePhaseJobs($songIds, $phases);
     }
 
-    public function activeRegionJobs(array $songIds, array $regions): array
+    public function activePhaseJobs(array $songIds, array $phases): array
     {
         $songIds = array_values(array_unique(array_filter(
             array_map('intval', $songIds),
             static fn(int $id): bool => $id > 0
         )));
-        $regions = array_values(array_unique(array_map('strval', $regions)));
-        if ($songIds === [] || $regions === []) {
+        $phases = array_values(array_unique(array_map('strval', $phases)));
+        if ($songIds === [] || $phases === []) {
             return [];
         }
 
         $songMarks = implode(',', array_fill(0, count($songIds), '?'));
-        $regionMarks = implode(',', array_fill(0, count($regions), '?'));
-        $regionExpr = $this->regionKindSql('analysis_jobs');
+        $phaseMarks = implode(',', array_fill(0, count($phases), '?'));
+        $phaseExpr = $this->phaseKindSql('analysis_jobs');
 
         $stmt = $this->pdo()->prepare(
             "SELECT id,kind,status,progress,updated_at,scientific_run_id
              FROM analysis_jobs
              WHERE song_id IN ($songMarks)
-               AND $regionExpr IN ($regionMarks)
+               AND $phaseExpr IN ($phaseMarks)
                AND status IN ('queued','running','cancelling')
              ORDER BY id"
         );
-        $stmt->execute([...$songIds, ...$regions]);
+        $stmt->execute([...$songIds, ...$phases]);
         return $stmt->fetchAll();
     }
 

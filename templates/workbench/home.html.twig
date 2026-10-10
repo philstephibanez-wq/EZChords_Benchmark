@@ -4,14 +4,14 @@
 <div class="card hero">
   <div>
     <h1>Catalogue</h1>
-    <div class="meta">Chromosome analytique : PROFILE → STEMS → CHORDS/N → LYRICS.</div>
+    <div class="meta">Chaîne d’analyse : PROFILE → STEMS → CHORDS/N → LYRICS.</div>
   </div>
   <a class="button" href="{{ path('workbench_import') }}">Importer une chanson</a>
 </div>
 
 <style>
 .catalog-actions{display:flex;align-items:center;gap:6px;flex-wrap:nowrap}
-.catalog-region-action{display:inline-flex;align-items:center;gap:2px}
+.catalog-phase-action{display:inline-flex;align-items:center;gap:2px}
 .catalog-trash{padding:.42rem .5rem;min-width:2rem}
 .catalog-zip-disabled{opacity:.45;pointer-events:none}
 .catalog-job-cancel{margin-left:6px;padding:.2rem .45rem;font-size:11px}
@@ -71,41 +71,41 @@
       ] %}
       {% for action in actions %}
         {% set state = attribute(song, action.key) %}
-        <span class="catalog-region-action">
+        <span class="catalog-phase-action">
           <a class="button secondary" href="{{ path(action.route,{song:song.id}) }}">{{ action.label }}</a>
           {% if state.state != 'none' %}
           <form method="post"
-                action="{{ path('catalog_region_delete',{id:song.id,region:action.key}) }}"
+                action="{{ path('catalog_phase_delete',{id:song.id,phase:action.key}) }}"
                 class="catalog-delete-form"
-                data-confirm="Abandonner {{ action.cascade }} pour « {{ song.title|e('html_attr') }} » ? L'ADN et l'historique seront conservés."
+                data-confirm="Abandonner {{ action.cascade }} pour « {{ song.title|e('html_attr') }} » ? Les Presets et l’historique seront conservés."
                 style="display:inline">
             <button type="submit"
                     class="secondary catalog-trash catalog-delete-button"
-                    title="Abandonner {{ action.cascade }} sans détruire l’ADN"
+                    title="Abandonner {{ action.cascade }} sans détruire les Presets"
                     aria-label="Abandonner {{ action.cascade }}">🗑</button>
           </form>
           {% endif %}
         </span>
       {% endfor %}
 
-      {% set chromosome_present =
+      {% set analysis_chain_present =
         song.profile.state != 'none'
         or song.stems.state != 'none'
         or song.chords.state != 'none'
         or song.lyrics.state != 'none'
       %}
-      {% if chromosome_present %}
+      {% if analysis_chain_present %}
         <a class="button secondary"
-           href="{{ path('chromosome_adn_zip',{id:song.id}) }}"
-           title="Exporter le chromosome ADN disponible">Exporter les Presets</a>
+           href="{{ path('preset_export_zip',{id:song.id}) }}"
+           title="Exporter les Presets disponibles">Exporter les Presets</a>
       {% else %}
-        <span class="button secondary catalog-zip-disabled" title="Aucune région ADN disponible">Exporter les Presets</span>
+        <span class="button secondary catalog-zip-disabled" title="Aucun Preset disponible">Exporter les Presets</span>
       {% endif %}
 
       <form method="post"
             action="{{ path('catalog_delete',{id:song.id}) }}"
             class="catalog-delete-form"
-            data-confirm="Supprimer définitivement « {{ song.title|e('html_attr') }} », son chromosome complet et sa source ?"
+            data-confirm="Supprimer définitivement « {{ song.title|e('html_attr') }} », sa chaîne d’analyse complète et sa source ?"
             style="display:inline">
         <button type="submit"
                 class="secondary catalog-trash catalog-delete-button"

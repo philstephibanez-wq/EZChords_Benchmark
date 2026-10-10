@@ -1,0 +1,253 @@
+adn/specs/profile/semantic.clap-open-vocabulary.r3b35c.json:2:"schema": "ezstudio.gene-spec.v1",
+adn/specs/profile/semantic.clap-open-vocabulary.r3b35c.json:3:"gene": {
+adn/specs/profile/semantic.clap-open-vocabulary.r3b35c.json:6:"region": "profile",
+python/ezstudio/pipeline/profile/canonical_profile.py:102:str(gene): _as_rows(rows)
+python/ezstudio/pipeline/profile/canonical_profile.py:103:for gene, rows in value.items()
+python/ezstudio/pipeline/profile/canonical_profile.py:128:for gene, rows in engines.items():
+python/ezstudio/pipeline/profile/canonical_profile.py:135:"gene": gene,
+python/ezstudio/pipeline/profile/canonical_profile.py:194:gene = str(item.get("gene") or "")
+python/ezstudio/pipeline/profile/canonical_profile.py:195:if gene:
+python/ezstudio/pipeline/profile/canonical_profile.py:196:direct_genes.add(gene)
+python/ezstudio/pipeline/profile/canonical_profile.py:199:if isinstance(source, dict) and source.get("gene"):
+python/ezstudio/pipeline/profile/canonical_profile.py:200:direct_genes.add(str(source["gene"]))
+python/ezstudio/pipeline/profile/gene_registry.py:7:from gene import ModuleContext, ModuleConfig, run_module
+python/ezstudio/pipeline/profile/gene_registry.py:37:genes = []
+python/ezstudio/pipeline/profile/gene_registry.py:70:genes.append(
+python/ezstudio/pipeline/profile/gene_registry.py:90:"schema": "ezstudio.genome.region.v1",
+python/ezstudio/pipeline/profile/gene_registry.py:91:"region": "profile",
+python/ezstudio/pipeline/profile/gene_registry.py:93:"genes": genes,
+python/ezstudio/pipeline/profile/gene_registry.py:116:"schema": "ezstudio.profile.genes.v1",
+python/ezstudio/pipeline/profile/gene_registry.py:117:"genes": records,
+python/ezstudio/pipeline/profile/gene_registry.py:252:"gene": gene_id,
+python/ezstudio/pipeline/profile/gene_registry.py:264:support = len({str(item["gene"]) for item in sources})
+python/ezstudio/pipeline/profile/gene_registry.py:381:"gene": gene_id,
+python/ezstudio/pipeline/profile/gene_registry.py:409:"gene": gene_id,
+python/ezstudio/pipeline/profile/gene_registry.py:427:str(row["gene"])
+python/ezstudio/pipeline/profile/gene_registry.py:432:str(row["gene"])
+python/ezstudio/pipeline/profile/gene_registry.py:504:"gene": record["id"],
+python/ezstudio/pipeline/profile/gene_registry.py:517:"gene": item["gene"],
+python/ezstudio/pipeline/profile/gene_registry.py:527:source_record = semantic_by_id.get(str(item["gene"]))
+python/ezstudio/pipeline/profile/gene_registry.py:561:"gene": item["gene"],
+python/ezstudio/pipeline/profile/gene_registry.py:702:"gene": record["id"],
+python/ezstudio/pipeline/profile/gene_registry.py:750:"No calibrated cross-gene tonal probability yet; "
+python/ezstudio/pipeline/profile/gene_registry.py:776:"gene": record["id"],
+python/ezstudio/pipeline/profile/genes/descriptors_librosa.py:5:from gene import ModuleContext
+python/ezstudio/pipeline/profile/genes/embedding_mert.py:9:from gene import ModuleContext
+python/ezstudio/pipeline/profile/genes/meter_chords_shared.py:6:from gene import ModuleContext
+python/ezstudio/pipeline/profile/genes/rhythm_librosa.py:5:from gene import ModuleContext
+python/ezstudio/pipeline/profile/genes/semantic_clap_open_vocab.py:12:from gene import ModuleContext
+python/ezstudio/pipeline/profile/genes/semantic_panns.py:7:from gene import ModuleContext, file_sha256
+python/ezstudio/pipeline/profile/genes/semantic_passt.py:12:from gene import ModuleContext, file_sha256
+python/ezstudio/pipeline/profile/genes/tonal_ks.py:5:from gene import ModuleContext
+python/ezstudio/pipeline/profile/genes/tonal_madmom_key.py:11:from gene import ModuleContext, file_sha256
+python/ezstudio/pipeline/profile/perf_probe.py:118:"schema": "ezstudio.observability.profile-gene.v1",
+python/ezstudio/pipeline/profile/perf_probe.py:123:"gene": {
+python/ezstudio/pipeline/profile/runner.py:14:from gene import ModuleContext, ModuleConfig
+python/ezstudio/pipeline/profile/runner.py:16:from genes import descriptors_librosa
+python/ezstudio/pipeline/profile/runner.py:17:from genes import embedding_mert
+python/ezstudio/pipeline/profile/runner.py:18:from genes import meter_chords_shared
+python/ezstudio/pipeline/profile/runner.py:19:from genes import rhythm_librosa
+python/ezstudio/pipeline/profile/runner.py:20:from genes import semantic_clap_open_vocab
+python/ezstudio/pipeline/profile/runner.py:21:from genes import semantic_panns
+python/ezstudio/pipeline/profile/runner.py:22:from genes import semantic_passt
+python/ezstudio/pipeline/profile/runner.py:23:from genes import tonal_ks
+python/ezstudio/pipeline/profile/runner.py:24:from genes import tonal_madmom_key
+python/ezstudio/pipeline/profile/runner.py:72:for record in module_registry_result.get("genes") or []:
+python/ezstudio/pipeline/profile/runner.py:144:# tagging backend. Scientific truth stays in the independent gene outputs.
+python/ezstudio/pipeline/profile/runner.py:160:for record in module_registry_result.get("genes") or []:
+python/ezstudio/pipeline/profile/runner.py:180:records = module_registry_result.get("genes") or []
+python/ezstudio/pipeline/profile/runner.py:228:"genes": gene_rows,
+python/ezstudio/pipeline/profile/runner.py:552:module_registry_result.get("genes") or [],
+python/ezstudio/pipeline/profile/runner.py:573:"genome": genome_manifest,
+python/ezstudio/pipeline/profile/runner.py:590:"profile_architecture": "genes-r3b35c-canonical-contract",
+python/ezstudio/pipeline/profile/runner.py:599:write_progress(progress, 96, "PROFILE: écriture ADN R3B31")
+python/ezstudio/runtime/__init__.py:1:"""EZStudio declarative gene runtime.
+python/ezstudio/runtime/__init__.py:3:This package is intentionally region-agnostic. PROFILE is the first migration
+python/ezstudio/runtime/adapters/__init__.py:3:Adapters are technical capability boundaries. Region-specific scientific policy
+python/ezstudio/runtime/engine_registry.py:22:"""Region-agnostic registry of engine/model adapters.
+python/ezstudio/runtime/gene_spec.py:22:return str(self.data["gene"]["id"])
+python/ezstudio/runtime/gene_spec.py:30:return str(self.data["gene"]["revision"])
+python/ezstudio/runtime/gene_spec.py:34:return str(self.data["gene"]["region"])
+python/ezstudio/runtime/gene_spec.py:37:def region(self) -> str:
+python/ezstudio/runtime/gene_spec.py:49:"region": self.region,
+python/ezstudio/runtime/gene_spec.py:71:if schema != "ezstudio.gene-spec.v1":
+python/ezstudio/runtime/gene_spec.py:74:gene = _require_mapping(data.get("gene"), "gene")
+python/ezstudio/runtime/gene_spec.py:75:_require_string(gene, "id", "gene")
+python/ezstudio/runtime/gene_spec.py:76:_require_string(gene, "revision", "gene")
+python/ezstudio/runtime/gene_spec.py:77:region = _require_string(gene, "region", "gene")
+python/ezstudio/runtime/gene_spec.py:78:if region not in {"profile", "stems", "chords", "lyrics"}:
+python/ezstudio/runtime/gene_spec.py:79:raise ModuleConfigError("gene.region_invalid")
+python/ezstudio/runtime/gene_spec.py:125:# Legacy API aliases; persisted schema remains ezstudio.gene-spec.v1 in R1.
+scripts/apply_declarative_runtime_v1a.ps1:22:# V1A establishes the common engine contract and encodes the current PROFILE DNA.
+scripts/apply_declarative_runtime_v1a.ps1:25:Write-Host 'PROFILE R3B35C CLAP Gene Spec encoded'
+scripts/apply_declarative_runtime_v1b.ps1:4:$wrapper = Join-Path $root 'python\ezstudio\pipeline\profile\genes\semantic_clap_open_vocab.py'
+scripts/apply_declarative_runtime_v1b.ps1:29:throw 'La Gene Spec R3B35C n''est pas referencee par le wrapper.'
+scripts/apply_declarative_runtime_v1b.ps1:34:Write-Host 'R3B35C Gene Spec remains the active scientific configuration'
+scripts/apply_profile_form_fr_r1e.ps1:38:Le formulaire valide les conclusions principales ; l’ADN conserve les données scientifiques et les scores d’origine.
+scripts/apply_profile_form_fr_r1e.ps1:162:{{ subject.scope == 'gene' ? 'Gène' : 'Région' }}
+scripts/apply_profile_r3b35c.ps1:24:$anchor = 'from gene import GeneContext, GeneSpec, run_gene'
+scripts/apply_profile_r3b35c.ps1:85:'"profile_architecture"\s*:\s*"genes-r3b[^"]+"',
+scripts/apply_profile_r3b35c.ps1:86:'"profile_architecture": "genes-r3b35c-canonical-contract"',
+scripts/apply_profile_r3b35c.ps1:91:'PROFILE: écriture ADN R3B[0-9A-Z]+',
+scripts/apply_profile_r3b35c.ps1:92:'PROFILE: écriture ADN R3B35C',
+scripts/apply_terminology_export_label_hotfix.ps1:11:if ($text.Contains('ZIP ADN')) {
+scripts/apply_terminology_export_label_hotfix.ps1:12:$text = $text.Replace('ZIP ADN', 'Exporter les Presets')
+scripts/apply_terminology_export_label_hotfix.ps1:24:throw 'Libelle "ZIP ADN" introuvable; aucun fichier modifie.'
+scripts/apply_terminology_preset_r1.py:70:text = text.replace("PresetRegistry $genome", "PresetRegistry $presets")
+scripts/apply_terminology_preset_r1.py:72:text = text.replace("$this->genome", "$this->presets")
+scripts/apply_terminology_preset_r1.py:74:text = text.replace("$genome->", "$presets->")
+scripts/apply_terminology_preset_r1.py:88:("ADN", "Preset"),
+scripts/apply_terminology_preset_r1.py:89:("Chromosome", "Chaîne"),
+scripts/apply_terminology_preset_r1.py:90:("chromosome", "chaîne"),
+scripts/apply_terminology_preset_r1.py:93:("Région", "Phase"),
+scripts/apply_terminology_preset_r1.py:94:("région", "phase"),
+scripts/apply_terminology_preset_r1.py:104:gene_py = "python/ezstudio/pipeline/profile/gene.py"
+scripts/apply_terminology_preset_r1.py:136:text = text.replace("from gene import GeneContext, GeneSpec",
+scripts/apply_terminology_preset_r1.py:137:"from gene import ModuleContext, ModuleConfig")
+scripts/apply_terminology_preset_r1.py:158:modules_dir = ROOT / "python/ezstudio/pipeline/profile/genes"
+scripts/apply_terminology_preset_r1.py:162:text = text.replace("from gene import GeneContext", "from gene import ModuleContext")
+scripts/apply_terminology_preset_r1.py:178:old = '    @property\n    def gene_id(self) -> str:\n        return str(self.data["gene"]["id"])\n'
+scripts/apply_terminology_preset_r1.py:179:new = '    @property\n    def module_id(self) -> str:\n        return str(self.data["gene"]["id"])\n\n    @property\n    def gene_id(self) -> str:\n        return self.module_id\n'
+scripts/apply_terminology_preset_r1.py:184:old = '    @property\n    def region(self) -> str:\n        return str(self.data["gene"]["region"])\n'
+scripts/apply_terminology_preset_r1.py:185:new = '    @property\n    def phase(self) -> str:\n        return str(self.data["gene"]["region"])\n\n    @property\n    def region(self) -> str:\n        return self.phase\n'
+scripts/apply_terminology_preset_r1.py:190:text += "\n\n# Legacy API aliases; persisted schema remains ezstudio.gene-spec.v1 in R1.\nGeneSpecError = ModuleConfigError\nGeneSpecDocument = ModuleConfigDocument\nvalidate_gene_spec = validate_module_config\nload_gene_spec = load_module_config\n"
+scripts/apply_terminology_preset_r1.py:201:text = text.replace("Gene Spec", "Module Config")
+scripts/apply_terminology_preset_r1.py:202:text = text.replace("gene spec", "module config")
+scripts/apply_terminology_preset_r1.py:205:clap_wrapper = ROOT / "python/ezstudio/pipeline/profile/genes/semantic_clap_open_vocab.py"
+scripts/apply_terminology_preset_r1.py:215:text = text.replace("A Gene Spec points", "A Module Config points")
+scripts/apply_terminology_preset_r1.py:216:text = text.replace("Gene Spec.", "Module Config.")
+scripts/apply_terminology_preset_r2a.py:99:("region", "phase"),
+scripts/apply_terminology_preset_r2a.py:100:("genes", "modules"),
+scripts/apply_terminology_preset_r2a.py:101:("gene", "module"),
+scripts/apply_terminology_preset_r2a.py:102:("Genome", "Preset"),
+scripts/apply_terminology_preset_r2a.py:103:("Gene", "Module"),
+scripts/apply_terminology_preset_r2a.py:104:("Region", "Phase"),
+scripts/apply_terminology_preset_r2a.py:111:"$modules = $manifest['modules'] ?? $manifest['genes'] ?? null;",
+scripts/apply_terminology_preset_r2a.py:129:public function captureRunGenome(int $runId, string $region, array $manifest): array
+scripts/apply_terminology_preset_r2a.py:131:return $this->captureRunPreset($runId, $region, $manifest);
+scripts/apply_terminology_preset_r2a.py:171:"$result['genome'] ?? null",
+scripts/apply_terminology_preset_r2a.py:172:"$result['preset'] ?? $result['genome'] ?? null",
+scripts/apply_terminology_preset_r2a.py:199:("scope IN ('region','gene')", "scope IN ('phase','module')"),
+scripts/apply_terminology_preset_r2a.py:210:("'region:'", "'phase:'"),
+scripts/apply_terminology_preset_r2a.py:211:("'scope' => 'region'", "'scope' => 'phase'"),
+scripts/apply_terminology_preset_r2a.py:226:text = re.sub(r"\$region\b", "$phase", text)
+scripts/apply_terminology_preset_r2a.py:227:text = re.sub(r"\$genes\b", "$modules", text)
+scripts/apply_terminology_preset_r2a.py:237:"CREATE TABLE IF NOT EXISTS analysis_resource_locks (\n    song_id INTEGER NOT NULL,\n    region TEXT NOT NULL,",
+scripts/apply_terminology_preset_r2a.py:241:"PRIMARY KEY(song_id, region)",
+scripts/apply_terminology_preset_r2a.py:245:text = text.replace("l.region =", "l.phase =")
+scripts/apply_terminology_preset_r2a.py:255:text = text.replace("$region", "$phase")
+scripts/apply_terminology_preset_r2a.py:268:text = text.replace("Region", "Phase")
+scripts/apply_terminology_preset_r2a.py:269:text = text.replace("region", "phase")
+scripts/apply_terminology_preset_r2a.py:280:"Chromosome analytique : PROFILE → STEMS → CHORDS/N → LYRICS.",
+scripts/apply_terminology_preset_r2a.py:283:("catalog-region-action", "catalog-phase-action"),
+scripts/apply_terminology_preset_r2a.py:285:("region:action.key", "phase:action.key"),
+scripts/apply_terminology_preset_r2a.py:286:("L'ADN et l'historique seront conservés.", "Les Presets et l’historique seront conservés."),
+scripts/apply_terminology_preset_r2a.py:287:("sans détruire l’ADN", "sans détruire les Presets"),
+scripts/apply_terminology_preset_r2a.py:290:("Exporter le chromosome ADN disponible", "Exporter les Presets disponibles"),
+scripts/apply_terminology_preset_r2a.py:291:("Aucune région ADN disponible", "Aucun Preset disponible"),
+scripts/apply_terminology_preset_r2a.py:292:("son chromosome complet", "sa chaîne d’analyse complète"),
+scripts/apply_terminology_preset_r2a.py:302:("l'ADN du run", "le Preset du run"),
+scripts/apply_terminology_preset_r2a.py:303:("artefacts ADN", "artefacts du run"),
+scripts/apply_terminology_preset_r2a.py:304:("Runs CHORDS ADN", "Runs CHORDS"),
+scripts/apply_terminology_preset_r2a.py:305:(">ADN<", ">Preset<"),
+scripts/apply_terminology_preset_r2a.py:306:("Aucun run CHORDS ADN.", "Aucun run CHORDS."),
+scripts/apply_terminology_preset_r2a.py:309:("ADN des artefacts", "Preset et artefacts"),
+scripts/apply_terminology_preset_r2a.py:310:("Run ADN", "Run"),
+scripts/apply_terminology_preset_r2a.py:311:(">ADN<", ">Preset<"),
+scripts/apply_terminology_preset_r2a.py:316:("ADN du run", "Preset du run"),
+scripts/apply_terminology_preset_r2a.py:317:("Artefacts ADN", "Artefacts du run"),
+scripts/apply_terminology_preset_r2a.py:320:("l'ADN scientifique", "le registre scientifique"),
+scripts/apply_terminology_preset_r2a.py:321:("piste(s) audio ADN", "piste(s) audio"),
+scripts/apply_terminology_preset_r2a.py:322:(">ADN<", ">Preset<"),
+scripts/apply_terminology_preset_r2a.py:323:("artefacts ADN", "artefacts"),
+scripts/apply_terminology_preset_r2a.py:324:("leur ADN", "leur historique"),
+scripts/apply_terminology_preset_r2a.py:327:("Résumé déterministe dérivé de l’ADN.", "Résumé déterministe dérivé du run PROFILE."),
+scripts/apply_terminology_preset_r2a.py:341:old = ROOT / "scripts/export-chromosome-adn.py"
+scripts/apply_terminology_preset_r2a.py:362:("region", "phase"),
+scripts/apply_terminology_preset_r2a.py:363:("genome", "preset"),
+scripts/apply_terminology_preset_r2a.py:364:("chromosome", "analysis_chain"),
+scripts/apply_terminology_preset_r2a.py:365:("ADN", "PRESET"),
+scripts/apply_terminology_preset_r2a.py:371:text = text.replace("ezstudio.genome.export.v1", "ezstudio.preset.export.v1")
+scripts/apply_terminology_preset_r2a.py:372:text = text.replace("ezstudio.chromosome.adn.v2", "ezstudio.analysis-chain.preset-bundle.v1")
+scripts/apply_terminology_preset_r2a.py:375:text = text.replace("genome/", "presets/")
+scripts/apply_terminology_preset_r2a.py:376:text = text.replace("region/gene revisions", "phase/module revisions")
+scripts/apply_terminology_preset_r2a.py:392:"/catalogue/{id<\\d+>}/chromosome-adn.zip",
+scripts/apply_terminology_preset_r2a.py:396:text = text.replace("export-chromosome-adn.py", "export-presets.py")
+scripts/apply_terminology_preset_r2a.py:397:text = text.replace("chromosome-adn", "presets")
+scripts/apply_terminology_profile_ui_hotfix.ps1:15:'Région PROFILE du chromosome : caractérisation globale du master avant STEMS.' =
+scripts/apply_terminology_profile_ui_hotfix.ps1:18:'Autres éléments sonores conservés dans l’ADN' =
+scripts/apply_terminology_profile_ui_hotfix.ps1:21:'Le formulaire valide les conclusions principales ; l’ADN conserve les données scientifiques et les scores d’origine.' =
+scripts/apply_terminology_profile_ui_hotfix.ps1:24:"{{ subject.scope == 'gene' ? 'Gène' : 'Région' }}" =
+scripts/apply_terminology_profile_ui_hotfix.ps1:25:"{{ subject.scope == 'gene' ? 'Module' : 'Phase' }}"
+scripts/apply_terminology_profile_ui_hotfix.ps1:39:'>Run ADN PROFILE</a>' =
+scripts/apply_terminology_profile_ui_hotfix.ps1:56:'Résumé déterministe dérivé de l’ADN.',
+scripts/export-presets.py:302:"2) genomic evolution of phase/gene revisions.\n"
+scripts/grep_legacy_terminology_r2a.py:8:r"\b(?:ADN|DNA|Chromosome|chromosome|Genome|genome|Gene|gene|Genes|genes|Région|région|Region|region)\b"
+scripts/grep_legacy_terminology_r2a_scoped.py:9:r"\b(?:ADN|DNA|Chromosome|chromosome|Genome|genome|Gene|gene|Genes|genes|"
+scripts/grep_legacy_terminology_r2a_scoped.py:10:r"Région|région|Region|region)\b"
+scripts/migrate_terminology_preset_r2a_db.py:72:"SET scope=CASE scope WHEN 'region' THEN 'phase' "
+scripts/migrate_terminology_preset_r2a_db.py:73:"WHEN 'gene' THEN 'module' ELSE scope END"
+scripts/migrate_terminology_preset_r2a_db.py:78:"WHERE subject_key LIKE 'region:%'"
+scripts/migrate_terminology_preset_r2a_db.py:123:WHEN subject_key LIKE 'region:%'
+scripts/migrate_terminology_preset_r2a_db.py:128:WHEN 'region' THEN 'phase'
+scripts/migrate_terminology_preset_r2a_db.py:129:WHEN 'gene' THEN 'module'
+scripts/migrate_terminology_preset_r2a_db.py:265:rename_column(conn, "preset_phase_revisions", "region", "phase")
+scripts/migrate_terminology_preset_r2a_db.py:299:"region",
+scripts/migrate_terminology_preset_r2a_db.py:330:"region",
+scripts/test_declarative_runtime_v1a.py:22:assert doc.region == "profile"
+scripts/test_declarative_runtime_v1a.py:51:registry.register("dummy", lambda spec, context: {"ok": True, "spec": spec["gene"]["id"]})
+scripts/test_declarative_runtime_v1a.py:62:print("PROFILE R3B35C CLAP Gene Spec encoded without changing execution")
+scripts/test_declarative_runtime_v1b.py:22:WRAPPER = ROOT / "python/ezstudio/pipeline/profile/genes/semantic_clap_open_vocab.py"
+scripts/test_declarative_runtime_v1b.py:35:assert spec.region == "profile"
+scripts/test_declarative_runtime_v1b.py:59:# different Gene Spec decision => different selection, no engine code edit.
+scripts/test_declarative_runtime_v1b.py:80:print("PROFILE CLAP is driven by R3B35C Gene Spec")
+scripts/test_profile_r3b35c_contract.py:41:{"gene": "semantic.panns-cnn14"},
+scripts/test_profile_r3b35c_contract.py:42:{"gene": "semantic.passt-audioset"},
+scripts/test_profile_r3b35c_contract.py:52:{"gene": "semantic.panns-cnn14"},
+scripts/test_profile_r3b35c_contract.py:53:{"gene": "semantic.passt-audioset"},
+scripts/test_profile_r3b35c_contract.py:60:"source_evidence": [{"gene": "semantic.panns-cnn14"}],
+scripts/test_profile_r3b35c_contract.py:66:"source_evidence": [{"gene": "semantic.passt-audioset"}],
+scripts/test_terminology_export_label_hotfix.php:18:if(str_contains($text,'ZIP ADN')) $legacy[]=$file->getPathname();
+scripts/test_terminology_preset_r1.py:12:PROFILE/"gene.py",
+scripts/test_terminology_preset_r1.py:21:PROFILE/"gene.py",
+scripts/test_terminology_preset_r1.py:29:module_text = (PROFILE/"gene.py").read_text(encoding="utf-8")
+scripts/test_terminology_preset_r1.py:50:assert '"genome"' in runner_text
+scripts/test_terminology_preset_r1.py:60:assert 'ezstudio.gene-spec.v1' in cfg_text
+scripts/test_terminology_preset_r1.py:63:genome = (ROOT/"src/Service/GenomeRegistry.php").read_text(encoding="utf-8")
+scripts/test_terminology_preset_r1.py:65:assert "genome_gene_revisions" in genome
+scripts/test_terminology_preset_r1.py:66:assert "genome_region_revisions" in genome
+scripts/test_terminology_preset_r2a.py:56:"WHERE scope IN ('region','gene')"
+scripts/test_terminology_preset_r2a.py:63:assert "region" not in c
+scripts/test_terminology_preset_r2a.py:83:assert "Chromosome analytique" not in home
+scripts/test_terminology_preset_r2a.py:87:assert not (ROOT / "scripts/export-chromosome-adn.py").exists()
+scripts/test_terminology_profile_ui_hotfix.php:14:"subject.scope == 'gene' ? 'Module' : 'Phase'",
+scripts/test_terminology_profile_ui_hotfix.php:30:'Région PROFILE du chromosome',
+scripts/test_terminology_profile_ui_hotfix.php:32:'>Run ADN PROFILE</a>',
+scripts/test_terminology_profile_ui_hotfix.php:33:'conservés dans l’ADN',
+scripts/test_terminology_profile_ui_hotfix.php:45:if (str_contains($summary, 'Résumé déterministe dérivé de l’ADN.')) {
+src/Controller/ProfileController.php:149:['name' => 'ezstudio-profile-genes', 'version' => 'r3b31', 'model' => 'multi-engine-profile-genes'],
+src/Service/Database.php:1243:song_id,region,operation,owner,created_at,expires_at_epoch
+src/Service/GenomeRegistry.php:7:public function captureRunGenome(int $runId, string $region, array $manifest): array
+src/Service/GenomeRegistry.php:9:return $this->captureRunPreset($runId, $region, $manifest);
+src/Service/PresetRegistry.php:104:$modules = $manifest['modules'] ?? $manifest['genes'] ?? null;
+src/Service/PresetRegistry.php:175:'schema' => 'ezstudio.genome.phase.v1',
+src/Service/PresetRegistry.php:242:?? 'ezstudio.genome.phase.v1',
+src/Service/ProfileDnaExecutionService.php:100:$presetManifest = $result['preset'] ?? $result['genome'] ?? null;
+src/Service/ProfileValidationService.php:80:'region:tempo', 'tempo', 'Tempo',
+src/Service/ProfileValidationService.php:101:'region:time_signature', 'time_signature', 'Signature',
+src/Service/ProfileValidationService.php:126:$subjects[] = $this->subject('region:key', 'key', 'Tonalité finale', $keyPayload, $text);
+src/Service/ProfileValidationService.php:168:'region:instrumentation',
+src/Service/ProfileValidationService.php:188:'region:choirs',
+src/Service/ProfileValidationService.php:206:'region:audioset',
+templates/lab/stems_job.html.twig:13:<a href="#preset">ADN</a>
+templates/workbench/home.html.twig:20:<div class="card" id="catalog-live-region">
+templates/workbench/profile.html.twig:4:<div class="card hero"><div><h1>PROFILE</h1><div class="meta">Région PROFILE du chromosome : caractérisation globale du master avant STEMS.</div></div></div>
+templates/workbench/profile.html.twig:67:{% if profile_summary.audioset_contextual %}<div class="summary-line"><strong>Autres éléments sonores conservés dans l’ADN</strong> · {{ profile_summary.audioset_contextual|join(', ') }}</div>{% endif %}
+templates/workbench/profile.html.twig:82:Le formulaire valide les conclusions principales ; l’ADN conserve les données scientifiques et les scores d’origine.
+templates/workbench/profile.html.twig:206:{{ subject.scope == 'gene' ? 'Gène' : 'Région' }}
+templates/workbench/profile.html.twig:296:{% set genes = pv.genes is defined ? pv.genes : (attribute(pv, legacy_gene_key) ?? []) %}
+templates/workbench/profile.html.twig:335:{% if genes %}
+templates/workbench/profile.html.twig:337:{% for e in genes %}
+templates/workbench/profile.html.twig:356:<tr><td>{{ s.gene ?? attribute(s, legacy_source_key) ?? '—' }}</td><td>{{ s.label }}</td><td>{% if s.confidence is not null %}{{ (s.confidence*100)|number_format(1) }}%{% else %}—{% endif %}</td></tr>
+templates/workbench/profile.html.twig:371:<td>{% for s in a.sources ?? [] %}{% set legacy_source_key = 'ped' ~ 'al' %}{{ s.gene ?? attribute(s, legacy_source_key) ?? '—' }}={{ (s.score*100)|number_format(1) }}%{% if not loop.last %} · {% endif %}{% endfor %}</td>
+templates/workbench/profile.html.twig:376:{{ e.gene }} : rang {{ e.rank ?? '—' }}/{{ e.class_count ?? '—' }}, rang-score {% if e.rank_score is defined %}{{ (e.rank_score*100)|number_format(0) }}%{% else %}—{% endif %}, top-5 {% if e.top5_support is defined %}{{ (e.top5_support*100)|number_format(0) }}%{% else %}—{% endif %}, top-10 {{ (e.top10_support*100)|number_format(0) }}%{% if not loop.last %}<br>{% endif %}
